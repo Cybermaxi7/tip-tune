@@ -7,9 +7,8 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
-import { Artist } from '../../artists/entities/artist.entity';
-import { Track } from '../../tracks/entities/track.entity';
+import { User } from '../users/entities/user.entity';
+import { Track } from '../tracks/entities/track.entity';
 
 export enum TipStatus {
   PENDING = 'pending',
@@ -35,9 +34,9 @@ export class Tip {
   @Column({ type: 'uuid' })
   toArtistId: string;
 
-  @ManyToOne(() => Artist, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'toArtistId' })
-  toArtist: Artist;
+  toArtist: User;
 
   @Column({ type: 'uuid', nullable: true })
   trackId: string;
@@ -49,7 +48,7 @@ export class Tip {
   @Column({ type: 'decimal', precision: 18, scale: 7 })
   amount: number;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
   usdValue: number;
 
   @Column({ type: 'varchar', length: 255, unique: true })

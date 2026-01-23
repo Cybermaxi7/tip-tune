@@ -4,6 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 // import { TracksModule } from './tracks/tracks.module';
+import { TipsModule } from './tips/tips.module';
+import { StellarModule } from './stellar/stellar.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { UsersModule } from './users/users.module';
     StorageModule,
     UsersModule,
     // TracksModule,
+    TipsModule,
+    StellarModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [],

@@ -3,37 +3,106 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Tip, TipStatus } from './entities/tip.entity';
-import { CreateTipDto } from './dto/create-tip.dto';
-import { PaginationQueryDto, PaginatedResponseDto } from './dto/pagination.dto';
+import { Tip, TipStatus } from './tips.entity';
+import { CreateTipDto } from './create-tips.dto';
+import { PaginationQueryDto, PaginatedResponseDto } from './pagination.dto';
+import { StellarService } from '../stellar/stellar.service';
+import { UsersService } from '../users/users.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TipsService {
+  private readonly logger = new Logger(TipsService.name);
+
   constructor(
     @InjectRepository(Tip)
     private readonly tipRepository: Repository<Tip>,
+    private readonly stellarService: StellarService,
+    private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
-  async create(createTipDto: CreateTipDto): Promise<Tip> {
-    // Check if stellar transaction hash already exists
+  async create(userId: string, createTipDto: CreateTipDto): Promise<Tip> {
+    const { artistId, trackId, stellarTxHash, message } = createTipDto;
+
+    // 1. Check if tip already exists
     const existingTip = await this.tipRepository.findOne({
-      where: { stellarTxHash: createTipDto.stellarTxHash },
+      where: { stellarTxHash },
     });
 
     if (existingTip) {
       throw new ConflictException('Tip with this Stellar transaction hash already exists');
     }
 
-    // Validate that fromUserId and toArtistId are different
-    if (createTipDto.fromUserId === createTipDto.toArtistId) {
+    // 2. Validate users
+    if (userId === artistId) {
       throw new BadRequestException('Cannot tip yourself');
     }
 
-    const tip = this.tipRepository.create(createTipDto);
-    return this.tipRepository.save(tip);
+    // Fetch artist to get wallet address
+    let artist;
+    try {
+      artist = await this.usersService.findOne(artistId);
+    } catch (error) {
+       if (error instanceof NotFoundException) {
+           throw new BadRequestException('Artist not found');
+       }
+       throw error;
+    }
+    
+    if (!artist.walletAddress) {
+        throw new BadRequestException('Artist does not have a wallet address configured');
+    }
+
+    // 3. Verify transaction on Stellar
+    let txDetails;
+    try {
+        txDetails = await this.stellarService.getTransactionDetails(stellarTxHash);
+    } catch (e) {
+        throw new BadRequestException(`Invalid Stellar transaction hash: ${e.message}`);
+    }
+
+    if (!txDetails.successful) {
+         throw new BadRequestException('Stellar transaction failed on-chain');
+    }
+
+    const operations = await txDetails.operations();
+    // Find payment to artist
+    const paymentOp: any = operations.records.find(
+        (op: any) => 
+            op.type === 'payment' && 
+            op.to === artist.walletAddress && 
+            (op.asset_type === 'native' || op.asset_code === 'USDC')
+    );
+
+    if (!paymentOp) {
+        throw new BadRequestException('Transaction does not contain a valid payment to the artist');
+    }
+
+    const amount = paymentOp.amount;
+    
+    // Create Tip entity
+    const tip = this.tipRepository.create({
+      fromUserId: userId,
+      toArtistId: artistId,
+      trackId,
+      amount: parseFloat(amount),
+      stellarTxHash,
+      message,
+      status: TipStatus.COMPLETED,
+      // usdValue can be updated later via a price service
+    });
+
+    const savedTip = await this.tipRepository.save(tip);
+
+    // Emit WebSocket notification
+    this.notificationsService.notifyArtistOfTip(artistId, savedTip);
+    
+    return savedTip;
   }
 
   async findOne(id: string): Promise<Tip> {

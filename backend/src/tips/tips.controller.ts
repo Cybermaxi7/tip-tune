@@ -8,7 +8,8 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
-  Patch,
+  Headers,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,11 +17,12 @@ import {
   ApiResponse,
   ApiParam,
   ApiQuery,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { TipsService } from './tips.service';
-import { CreateTipDto } from './dto/create-tip.dto';
-import { PaginationQueryDto } from './dto/pagination.dto';
-import { Tip, TipStatus } from './entities/tip.entity';
+import { CreateTipDto } from './create-tips.dto';
+import { PaginationQueryDto } from './pagination.dto';
+import { Tip, TipStatus } from './tips.entity';
 
 @ApiTags('Tips')
 @Controller('tips')
@@ -30,6 +32,11 @@ export class TipsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new tip record' })
+  @ApiHeader({
+    name: 'x-user-id',
+    description: 'User ID of the tipper',
+    required: true,
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Tip successfully created',
@@ -43,8 +50,15 @@ export class TipsController {
     status: HttpStatus.CONFLICT,
     description: 'Tip with this Stellar transaction hash already exists',
   })
-  async create(@Body() createTipDto: CreateTipDto): Promise<Tip> {
-    return this.tipsService.create(createTipDto);
+  async create(
+    @Body() createTipDto: CreateTipDto,
+    @Headers('x-user-id') userId: string,
+  ): Promise<Tip> {
+    if (!userId) {
+      throw new BadRequestException('User ID header (x-user-id) is required');
+    }
+    // Simple validation, in real app use AuthGuard
+    return this.tipsService.create(userId, createTipDto);
   }
 
   @Get(':id')
@@ -102,45 +116,9 @@ export class TipsController {
   @ApiParam({ name: 'artistId', description: 'Artist ID' })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Artist tip statistics retrieved successfully',
+    description: 'Artist tip stats retrieved successfully',
   })
   async getArtistTipStats(@Param('artistId', ParseUUIDPipe) artistId: string) {
     return this.tipsService.getArtistTipStats(artistId);
-  }
-
-  @Get('track/:trackId')
-  @ApiOperation({ summary: 'Get tips for a specific track' })
-  @ApiParam({ name: 'trackId', description: 'Track ID' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'status', required: false, enum: TipStatus })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Track tips retrieved successfully',
-  })
-  async getTipsByTrack(
-    @Param('trackId', ParseUUIDPipe) trackId: string,
-    @Query() paginationQuery: PaginationQueryDto,
-  ) {
-    return this.tipsService.getTipsByTrack(trackId, paginationQuery);
-  }
-
-  @Patch(':id/status')
-  @ApiOperation({ summary: 'Update tip status' })
-  @ApiParam({ name: 'id', description: 'Tip ID' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Tip status updated successfully',
-    type: Tip,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Tip not found',
-  })
-  async updateStatus(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body('status') status: TipStatus,
-  ): Promise<Tip> {
-    return this.tipsService.updateTipStatus(id, status);
   }
 }
