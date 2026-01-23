@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Artist } from '../../artists/entities/artist.entity';
 
 @Entity('tracks')
 export class Track {
@@ -8,41 +9,57 @@ export class Track {
   @Column({ length: 255 })
   title: string;
 
-  @Column({ length: 255, nullable: true })
-  artist: string;
+  @Column({ type: 'int' })
+  duration: number; // in seconds
 
-  @Column({ length: 255 })
+  @Column({ length: 500 })
+  audioUrl: string;
+
+  @Column({ length: 500, nullable: true })
+  coverArtUrl: string;
+
+  @Column({ length: 100, nullable: true })
+  genre: string;
+
+  @Column({ type: 'date', nullable: true })
+  releaseDate: Date;
+
+  @Column({ type: 'int', default: 0 })
+  plays: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  totalTips: number;
+
+  @Column({ length: 255, nullable: true })
   filename: string;
 
-  @Column({ length: 500 })
+  @Column({ length: 500, nullable: true })
   url: string;
 
-  @Column({ length: 500 })
+  @Column({ length: 500, nullable: true })
   streamingUrl: string;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'bigint', nullable: true })
   fileSize: bigint;
 
-  @Column({ length: 100 })
+  @Column({ length: 100, nullable: true })
   mimeType: string;
-
-  @Column({ type: 'int', nullable: true })
-  duration: number;
-
-  @Column({ default: false })
-  isPublic: boolean;
 
   @Column({ type: 'text', nullable: true })
   description: string;
 
   @Column({ length: 255, nullable: true })
-  genre: string;
-
-  @Column({ length: 255, nullable: true })
   album: string;
 
-  @Column({ type: 'int', default: 0 })
-  playCount: number;
+  @Column({ default: false })
+  isPublic: boolean;
+
+  @Column({ uuid: true, nullable: true })
+  artistId: string;
+
+  @ManyToOne(() => Artist, artist => artist.tracks, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'artistId' })
+  artist: Artist;
 
   @CreateDateColumn()
   createdAt: Date;

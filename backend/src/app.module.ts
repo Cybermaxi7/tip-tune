@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StorageModule } from './storage/storage.module';
+import { ArtistsModule } from './artists/artists.module';
+import { TracksModule } from './tracks/tracks.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-// import { TracksModule } from './tracks/tracks.module';
 
 @Module({
   imports: [
@@ -24,9 +25,10 @@ import { AuthModule } from './auth/auth.module';
       logging: process.env.NODE_ENV === 'development',
     }),
     StorageModule,
+    ArtistsModule,
+    TracksModule,
     UsersModule,
     AuthModule,
-    // TracksModule,
   ],
   controllers: [],
   providers: [],

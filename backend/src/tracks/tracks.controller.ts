@@ -16,7 +16,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { TracksService } from './tracks.service';
 import { CreateTrackDto } from './dto/create-track.dto';
+import { TrackFilterDto } from './dto/pagination.dto';
 import { Track } from './entities/track.entity';
+
+interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 @ApiTags('tracks')
 @Controller('tracks')
@@ -25,108 +34,66 @@ export class TracksController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Create a new track with audio file' })
+  @ApiOperation({ summary: 'Create a new track with optional audio file' })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Create track with audio file',
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'Audio file (MP3, WAV, FLAC)',
-        },
-        title: {
-          type: 'string',
-          description: 'Track title',
-          example: 'My Awesome Track',
-        },
-        artist: {
-          type: 'string',
-          description: 'Artist name',
-          example: 'John Doe',
-        },
-        description: {
-          type: 'string',
-          description: 'Track description',
-        },
-        genre: {
-          type: 'string',
-          enum: ['rock', 'pop', 'jazz', 'classical', 'electronic', 'hip-hop', 'country', 'r-b', 'metal', 'indie', 'other'],
-          description: 'Track genre',
-        },
-        album: {
-          type: 'string',
-          description: 'Album name',
-        },
-        duration: {
-          type: 'number',
-          description: 'Track duration in seconds',
-        },
-        isPublic: {
-          type: 'boolean',
-          description: 'Whether the track is public',
-          default: false,
-        },
-      },
-      required: ['file', 'title'],
-    },
-  })
   @ApiResponse({
     status: 201,
     description: 'Track created successfully',
     type: Track,
   })
-  @ApiResponse({ status: 400, description: 'Bad Request - Invalid data or file' })
   async create(
     @Body() createTrackDto: CreateTrackDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file?: Express.Multer.File,
   ): Promise<Track> {
-    if (!file) {
-      throw new BadRequestException('Audio file is required');
-    }
-
     return this.tracksService.create(createTrackDto, file);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all tracks' })
-  @ApiResponse({ status: 200, description: 'List of all tracks', type: [Track] })
-  findAll(): Promise<Track[]> {
-    return this.tracksService.findAll();
+  @ApiOperation({ summary: 'Get all tracks with pagination and filtering' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10, max: 100)' })
+  @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field (default: createdAt)' })
+  @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order ASC or DESC (default: DESC)' })
+  @ApiQuery({ name: 'artistId', required: false, description: 'Filter by artist ID' })
+  @ApiQuery({ name: 'genre', required: false, description: 'Filter by genre' })
+  @ApiQuery({ name: 'album', required: false, description: 'Filter by album name' })
+  @ApiQuery({ name: 'isPublic', required: false, description: 'Filter by public status' })
+  @ApiQuery({ name: 'releaseDate', required: false, description: 'Filter by release date (YYYY-MM-DD)' })
+  @ApiResponse({ status: 200, description: 'Paginated list of tracks' })
+  findAll(@Query() filter: TrackFilterDto): Promise<PaginatedResult<Track>> {
+    return this.tracksService.findAll(filter);
   }
 
   @Get('public')
-  @ApiOperation({ summary: 'Get all public tracks' })
-  @ApiResponse({ status: 200, description: 'List of public tracks', type: [Track] })
-  findPublic(): Promise<Track[]> {
-    return this.tracksService.findPublic();
+  @ApiOperation({ summary: 'Get all public tracks with pagination and filtering' })
+  @ApiResponse({ status: 200, description: 'Paginated list of public tracks' })
+  findPublic(@Query() filter: TrackFilterDto): Promise<PaginatedResult<Track>> {
+    return this.tracksService.findPublic(filter);
   }
 
   @Get('search')
-  @ApiOperation({ summary: 'Search tracks by title, artist, or album' })
+  @ApiOperation({ summary: 'Search tracks by title or album' })
   @ApiQuery({ name: 'q', description: 'Search query', required: true })
-  @ApiResponse({ status: 200, description: 'Search results', type: [Track] })
-  search(@Query('q') query: string): Promise<Track[]> {
+  @ApiResponse({ status: 200, description: 'Paginated search results' })
+  search(@Query('q') query: string, @Query() filter: TrackFilterDto): Promise<PaginatedResult<Track>> {
     if (!query) {
       throw new BadRequestException('Search query is required');
     }
-    return this.tracksService.search(query);
+    return this.tracksService.search(query, filter);
   }
 
-  @Get('artist/:artist')
-  @ApiOperation({ summary: 'Get tracks by artist' })
-  @ApiResponse({ status: 200, description: 'Tracks by artist', type: [Track] })
-  findByArtist(@Param('artist') artist: string): Promise<Track[]> {
-    return this.tracksService.findByArtist(artist);
+  @Get('artist/:artistId')
+  @ApiOperation({ summary: 'Get tracks by artist ID with pagination' })
+  @ApiResponse({ status: 200, description: 'Paginated tracks by artist' })
+  findByArtist(@Param('artistId', ParseUUIDPipe) artistId: string, @Query() filter: TrackFilterDto): Promise<PaginatedResult<Track>> {
+    return this.tracksService.findByArtist(artistId, filter);
   }
 
   @Get('genre/:genre')
-  @ApiOperation({ summary: 'Get tracks by genre' })
-  @ApiResponse({ status: 200, description: 'Tracks by genre', type: [Track] })
-  findByGenre(@Param('genre') genre: string): Promise<Track[]> {
-    return this.tracksService.findByGenre(genre);
+  @ApiOperation({ summary: 'Get tracks by genre with pagination' })
+  @ApiResponse({ status: 200, description: 'Paginated tracks by genre' })
+  findByGenre(@Param('genre') genre: string, @Query() filter: TrackFilterDto): Promise<PaginatedResult<Track>> {
+    return this.tracksService.findByGenre(genre, filter);
   }
 
   @Get(':id')
@@ -154,6 +121,20 @@ export class TracksController {
   @ApiResponse({ status: 404, description: 'Track not found' })
   incrementPlayCount(@Param('id', ParseUUIDPipe) id: string): Promise<Track> {
     return this.tracksService.incrementPlayCount(id);
+  }
+
+  @Patch(':id/tips')
+  @ApiOperation({ summary: 'Add tips to track total' })
+  @ApiResponse({ status: 200, description: 'Tips added successfully', type: Track })
+  @ApiResponse({ status: 404, description: 'Track not found' })
+  addTips(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('amount') amount: number,
+  ): Promise<Track> {
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('Valid tip amount is required');
+    }
+    return this.tracksService.addTips(id, amount);
   }
 
   @Delete(':id')
