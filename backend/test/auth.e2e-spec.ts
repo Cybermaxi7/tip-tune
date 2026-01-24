@@ -81,4 +81,5 @@ describe('AuthController (e2e)', () => {
         })
         .expect(400);
     });
+  });
 });

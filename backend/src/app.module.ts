@@ -10,6 +10,7 @@ import { TipsModule } from './tips/tips.module';
 import { StellarModule } from './stellar/stellar.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SearchModule } from './search/search.module';
+import { PlaylistsModule } from './playlists/playlists.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SearchModule } from './search/search.module';
     StellarModule,
     NotificationsModule,
     SearchModule,
+    PlaylistsModule,
   ],
   controllers: [],
   providers: [],

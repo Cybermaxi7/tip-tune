@@ -9,7 +9,6 @@ import {
   setNetwork,
   signTransaction,
 } from '@stellar/freighter-api';
-import * as StellarSdk from '@stellar/stellar-sdk';
 import type { Network, WalletState, WalletContextType, WalletErrorCode } from '../types/wallet';
 import { WalletError } from '../types/wallet';
 import { getServer, getNetworkPassphrase, formatStellarAmount } from '../utils/stellar';
