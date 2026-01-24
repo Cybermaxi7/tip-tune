@@ -1,16 +1,17 @@
 import {
-  IsString,
-  IsOptional,
   IsBoolean,
-  MaxLength,
   IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class CreatePlaylistDto {
+export class CreateSmartPlaylistDto {
   @ApiProperty({
     description: 'Playlist name',
-    example: 'Chill Vibes',
+    example: 'Late Night Grooves',
     maxLength: 255,
   })
   @IsString()
@@ -20,7 +21,7 @@ export class CreatePlaylistDto {
 
   @ApiPropertyOptional({
     description: 'Playlist description',
-    example: 'A collection of relaxing tracks for unwinding',
+    example: 'Auto-updating playlist based on your favorite genres',
   })
   @IsOptional()
   @IsString()
@@ -36,15 +37,6 @@ export class CreatePlaylistDto {
   isPublic?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Whether non-owner edits require approval',
-    example: false,
-    default: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  approvalRequired?: boolean;
-
-  @ApiPropertyOptional({
     description: 'Cover image URL',
     example: 'https://example.com/cover.jpg',
   })
@@ -52,4 +44,20 @@ export class CreatePlaylistDto {
   @IsString()
   @MaxLength(500)
   coverImage?: string;
+
+  @ApiProperty({
+    description: 'Smart playlist criteria',
+    example: { type: 'genre', genres: ['lofi', 'ambient'], limit: 50 },
+  })
+  @IsObject()
+  criteria: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: 'Whether the playlist should auto-update',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoUpdate?: boolean;
 }

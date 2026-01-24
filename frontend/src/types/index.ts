@@ -21,7 +21,8 @@ export interface PaginatedResponse<T> {
 export interface Track {
   id: string;
   title: string;
-  artist?: string;
+  artistId?: string;
+  artist?: ArtistSummary;
   filename: string;
   url: string;
   streamingUrl: string;
