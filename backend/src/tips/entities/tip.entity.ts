@@ -33,10 +33,10 @@ export class Tip {
   @PrimaryGeneratedColumn("uuid")
   id: string;
 
-  @Column({ length: 255 })
+  @Column({ type: "uuid" })
   artistId: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: "uuid", nullable: true })
   trackId?: string;
 
   @Column({ length: 64, unique: true })
