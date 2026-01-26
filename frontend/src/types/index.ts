@@ -77,6 +77,41 @@ export interface Artist {
   createdAt: string;
 }
 
+// Gamification Types
+export enum BadgeCategory {
+  TIPPER = 'tipper',
+  ARTIST = 'artist',
+  SPECIAL = 'special',
+}
+
+export enum BadgeTier {
+  BRONZE = 'bronze',
+  SILVER = 'silver',
+  GOLD = 'gold',
+  PLATINUM = 'platinum',
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  category: BadgeCategory;
+  tier: BadgeTier;
+  imageUrl: string | null;
+  criteria: Record<string, any>;
+  nftAssetCode: string | null;
+  createdAt: string;
+}
+
+export interface UserBadge {
+  id: string;
+  userId: string;
+  badgeId: string;
+  earnedAt: string;
+  nftTxHash: string | null;
+  badge: Badge; // When relations are loaded
+}
+
 export interface ArtistSummary {
   id: string;
   artistName?: string;

@@ -35,14 +35,14 @@ export class StellarService {
 
       // We need to inspect operations to ensure the correct amount was sent to the correct recipient
       const operations = await tx.operations();
-      
+
       const paymentOp = operations.records.find(
         (op) =>
           op.type === 'payment' &&
           op.to === recipientId &&
           op.amount === amount, // Note: exact string match. 
-          // Better to use a BigNumber library or StellarSdk's handling if precision is key, 
-          // but for now string comparison matches API.
+        // Better to use a BigNumber library or StellarSdk's handling if precision is key, 
+        // but for now string comparison matches API.
       );
 
       if (!paymentOp) {
@@ -67,5 +67,19 @@ export class StellarService {
       this.logger.error(`Error fetching transaction ${txHash}: ${error.message}`);
       throw error;
     }
+  }
+
+  async mintBadge(userId: string, badge: any): Promise<string | null> {
+    this.logger.log(`Minting badge ${badge.name} for user ${userId} (MOCKED)`);
+    // In a real implementation:
+    // 1. Check if user has trustline for asset (badge.nftAssetCode)
+    // 2. Build transaction from Issuer account to User account
+    // 3. Sign and submit
+
+    // For now, return a mock hash if enabled
+    if (process.env.ENABLE_NFT_MINTING === 'true') {
+      return 'mock_tx_hash_' + Date.now();
+    }
+    return null;
   }
 }

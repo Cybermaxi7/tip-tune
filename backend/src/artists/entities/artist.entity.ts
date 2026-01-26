@@ -9,8 +9,8 @@ import {
   OneToMany,
 } from "typeorm";
 import { User } from "../../users/entities/user.entity";
-import { Track } from "@/tracks/entities/track.entity";
-import { Tip } from "@/tips/tips.entity";
+import { Track } from "../../tracks/entities/track.entity";
+import { Tip } from "../../tips/entities/tip.entity";
 
 @Entity("artists")
 export class Artist {
@@ -39,7 +39,7 @@ export class Artist {
   @OneToMany(() => Track, (track) => track.artist)
   tracks: Track[];
 
-  @OneToMany(() => Tip, (tip) => tip.toArtist)
+  @OneToMany(() => Tip, (tip) => tip.artist)
   tips: Tip[];
 
   @Column({ nullable: true })
