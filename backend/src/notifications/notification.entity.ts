@@ -3,6 +3,7 @@ import { User } from '../users/entities/user.entity';
 
 export enum NotificationType {
   TIP_RECEIVED = 'TIP_RECEIVED',
+  BADGE_EARNED = 'BADGE_EARNED',
   SYSTEM = 'SYSTEM',
 }
 

@@ -10,7 +10,7 @@ export class NotificationsService {
     @InjectRepository(Notification)
     private readonly notificationRepository: Repository<Notification>,
     private readonly notificationsGateway: NotificationsGateway,
-  ) {}
+  ) { }
 
   async notifyArtistOfTip(artistId: string, tip: any) {
     const title = 'New Tip Received!';
@@ -30,13 +30,40 @@ export class NotificationsService {
       message,
       data,
     });
-    
+
     const savedNotification = await this.notificationRepository.save(notification);
 
     // Emit via WebSocket
     this.notificationsGateway.sendNotificationToArtist(artistId, {
       ...savedNotification,
       type: 'TIP_RECEIVED', // Ensure frontend gets the string it expects if consistent with enum
+    });
+  }
+
+  async notifyUserOfBadge(userId: string, userBadge: any) {
+    const title = 'Achievement Unlocked!';
+    const message = `You've earned a new badge: ${userBadge.badge?.name || 'Badge'}`;
+    const data = {
+      badgeId: userBadge.badgeId,
+      userBadgeId: userBadge.id,
+      earnedAt: userBadge.earnedAt,
+    };
+
+    // Save notification to DB
+    const notification = this.notificationRepository.create({
+      userId,
+      type: NotificationType.BADGE_EARNED,
+      title,
+      message,
+      data,
+    });
+
+    const savedNotification = await this.notificationRepository.save(notification);
+
+    // Emit via WebSocket
+    this.notificationsGateway.sendNotificationToArtist(userId, {
+      ...savedNotification,
+      type: 'BADGE_EARNED',
     });
   }
 
