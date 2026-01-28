@@ -40,6 +40,7 @@ import { GoalsModule } from './goals/goals.module';
       logging: process.env.NODE_ENV === 'development',
     }),
     ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot({ global: true }),
     StorageModule,
     ArtistsModule,
     TracksModule,
