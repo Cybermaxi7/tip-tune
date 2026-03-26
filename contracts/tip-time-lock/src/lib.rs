@@ -68,8 +68,16 @@ impl TimeLockContract {
         asset_address: Address,
         unlock_time: u64,
         message: String,
+        nonce: u64,
     ) -> Result<String, Error> {
         tipper.require_auth();
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&types::DataKey::ActorNonce(tipper.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&types::DataKey::ActorNonce(tipper.clone()), &nonce);
 
         if amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -142,8 +150,16 @@ impl TimeLockContract {
         env: Env,
         lock_id: String,
         artist: Address,
+        nonce: u64,
     ) -> Result<i128, Error> {
         artist.require_auth();
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&types::DataKey::ActorNonce(artist.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&types::DataKey::ActorNonce(artist.clone()), &nonce);
 
         let mut tip = storage::get_tip(&env, lock_id).ok_or(Error::LockNotFound)?;
 
@@ -196,8 +212,16 @@ impl TimeLockContract {
         env: Env,
         lock_id: String,
         tipper: Address,
+        nonce: u64,
     ) -> Result<(), Error> {
         tipper.require_auth();
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&types::DataKey::ActorNonce(tipper.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&types::DataKey::ActorNonce(tipper.clone()), &nonce);
 
         let mut tip = storage::get_tip(&env, lock_id).ok_or(Error::LockNotFound)?;
 

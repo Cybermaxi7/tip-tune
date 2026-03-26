@@ -137,7 +137,7 @@ fn test_remove_signer() {
 fn test_create_tip_success() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2, &1);
     let p = c.get_tip(&id).unwrap();
     assert_eq!(p.amount, 10_000_000_000_i128);
     assert_eq!(p.required_sigs, 2);
@@ -151,7 +151,7 @@ fn test_create_tip_locks_tokens() {
     let c = client(&t.env, &t.contract);
     let tc = soroban_sdk::token::Client::new(&t.env, &t.token);
     let before = tc.balance(&t.tipper);
-    c.create_multisig_tip(&t.tipper, &t.artist, &500_0000000_i128, &1);
+    c.create_multisig_tip(&t.tipper, &t.artist, &500_0000000_i128, &1, &1);
     assert_eq!(before - tc.balance(&t.tipper), 500_0000000_i128);
 }
 
@@ -159,8 +159,8 @@ fn test_create_tip_locks_tokens() {
 fn test_create_tip_unique_ids() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id1 = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
-    let id2 = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
+    let id1 = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &1);
+    let id2 = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &2);
     assert_ne!(id1, id2);
 }
 
@@ -168,7 +168,7 @@ fn test_create_tip_unique_ids() {
 fn test_create_tip_zero_amount_fails() {
     let t = setup();
     assert_eq!(
-        client(&t.env, &t.contract).try_create_multisig_tip(&t.tipper, &t.artist, &0, &1),
+        client(&t.env, &t.contract).try_create_multisig_tip(&t.tipper, &t.artist, &0, &1, &1),
         Err(Ok(Error::InvalidAmount))
     );
 }
@@ -181,7 +181,8 @@ fn test_create_tip_zero_sigs_fails() {
             &t.tipper,
             &t.artist,
             &100_0000000_i128,
-            &0
+            &0,
+            &1
         ),
         Err(Ok(Error::ZeroSigners))
     );
@@ -195,7 +196,8 @@ fn test_create_tip_too_many_sigs_fails() {
             &t.tipper,
             &t.artist,
             &100_0000000_i128,
-            &(MAX_REQUIRED_SIGS + 1)
+            &(MAX_REQUIRED_SIGS + 1),
+            &1
         ),
         Err(Ok(Error::TooManySigners))
     );
@@ -205,7 +207,7 @@ fn test_create_tip_too_many_sigs_fails() {
 fn test_create_tip_emits_canonical_event() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2, &1);
     let events = t.env.events().all();
     assert_eq!(events.len(), 1);
 
@@ -222,16 +224,16 @@ fn test_create_tip_emits_canonical_event() {
 fn test_approve_returns_false_below_threshold() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2);
-    assert!(!c.approve_tip(&id, &t.signer1));
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2, &1);
+    assert!(!c.approve_tip(&id, &t.signer1, &1));
 }
 
 #[test]
 fn test_approve_returns_true_at_threshold() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
-    assert!(c.approve_tip(&id, &t.signer1));
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &1);
+    assert!(c.approve_tip(&id, &t.signer1, &1));
 }
 
 #[test]
@@ -240,9 +242,9 @@ fn test_approve_transfers_to_artist() {
     let c = client(&t.env, &t.contract);
     let tc = soroban_sdk::token::Client::new(&t.env, &t.token);
     let amt = 500_0000000_i128;
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &1, &1);
     let before = tc.balance(&t.artist);
-    c.approve_tip(&id, &t.signer1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(tc.balance(&t.artist) - before, amt);
 }
 
@@ -250,8 +252,8 @@ fn test_approve_transfers_to_artist() {
 fn test_approve_status_becomes_executed() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
-    c.approve_tip(&id, &t.signer1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(c.get_tip(&id).unwrap().status, TipStatus::Executed);
 }
 
@@ -259,22 +261,22 @@ fn test_approve_status_becomes_executed() {
 fn test_approve_collects_multiple_sigs() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
-    c.approve_tip(&id, &t.signer1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(c.get_pending_approvals(&id).len(), 1);
-    c.approve_tip(&id, &t.signer2);
+    c.approve_tip(&id, &t.signer2, &1);
     assert_eq!(c.get_pending_approvals(&id).len(), 2);
-    assert!(c.approve_tip(&id, &t.signer3)); // executes
+    assert!(c.approve_tip(&id, &t.signer3, &1)); // executes
 }
 
 #[test]
 fn test_duplicate_approval_fails() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
-    c.approve_tip(&id, &t.signer1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(
-        c.try_approve_tip(&id, &t.signer1),
+        c.try_approve_tip(&id, &t.signer1, &2),
         Err(Ok(Error::AlreadyApproved))
     );
 }
@@ -284,9 +286,9 @@ fn test_non_whitelisted_approver_fails() {
     let t = setup();
     let c = client(&t.env, &t.contract);
     let rando = Address::generate(&t.env);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &1);
     assert_eq!(
-        c.try_approve_tip(&id, &rando),
+        c.try_approve_tip(&id, &rando, &1),
         Err(Ok(Error::NotWhitelisted))
     );
 }
@@ -295,10 +297,10 @@ fn test_non_whitelisted_approver_fails() {
 fn test_approve_expired_tip_fails() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2, &1);
     advance(&t.env, TIMEOUT_LEDGERS + 1);
     assert_eq!(
-        c.try_approve_tip(&id, &t.signer1),
+        c.try_approve_tip(&id, &t.signer1, &1),
         Err(Ok(Error::TipExpired))
     );
 }
@@ -307,11 +309,11 @@ fn test_approve_expired_tip_fails() {
 fn test_approvals_needed_decrements() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
     assert_eq!(c.approvals_needed(&id), 3);
-    c.approve_tip(&id, &t.signer1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(c.approvals_needed(&id), 2);
-    c.approve_tip(&id, &t.signer2);
+    c.approve_tip(&id, &t.signer2, &1);
     assert_eq!(c.approvals_needed(&id), 1);
 }
 
@@ -321,8 +323,8 @@ fn test_approvals_needed_decrements() {
 fn test_tipper_can_cancel_anytime() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
-    c.cancel_tip(&id, &t.tipper);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
+    c.cancel_tip(&id, &t.tipper, &2);
     assert_eq!(c.get_tip(&id).unwrap().status, TipStatus::Cancelled);
 }
 
@@ -333,8 +335,8 @@ fn test_cancel_refunds_tipper() {
     let tc = soroban_sdk::token::Client::new(&t.env, &t.token);
     let amt = 300_0000000_i128;
     let before = tc.balance(&t.tipper);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &3);
-    c.cancel_tip(&id, &t.tipper);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &3, &1);
+    c.cancel_tip(&id, &t.tipper, &2);
     assert_eq!(tc.balance(&t.tipper), before);
 }
 
@@ -342,9 +344,9 @@ fn test_cancel_refunds_tipper() {
 fn test_non_tipper_cannot_cancel_before_timeout() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
     assert_eq!(
-        c.try_cancel_tip(&id, &t.signer1),
+        c.try_cancel_tip(&id, &t.signer1, &1),
         Err(Ok(Error::TipNotExpired))
     );
 }
@@ -353,9 +355,9 @@ fn test_non_tipper_cannot_cancel_before_timeout() {
 fn test_anyone_can_cancel_after_timeout() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
     advance(&t.env, TIMEOUT_LEDGERS + 1);
-    c.cancel_tip(&id, &t.signer1);
+    c.cancel_tip(&id, &t.signer1, &1);
     assert_eq!(c.get_tip(&id).unwrap().status, TipStatus::Cancelled);
 }
 
@@ -363,10 +365,10 @@ fn test_anyone_can_cancel_after_timeout() {
 fn test_cancel_executed_tip_fails() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1);
-    c.approve_tip(&id, &t.signer1);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &1, &1);
+    c.approve_tip(&id, &t.signer1, &1);
     assert_eq!(
-        c.try_cancel_tip(&id, &t.tipper),
+        c.try_cancel_tip(&id, &t.tipper, &2),
         Err(Ok(Error::TipNotPending))
     );
 }
@@ -377,7 +379,7 @@ fn test_cancel_executed_tip_fails() {
 fn test_is_expired_false_before_timeout() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2, &1);
     assert!(!c.is_expired(&id));
 }
 
@@ -385,9 +387,46 @@ fn test_is_expired_false_before_timeout() {
 fn test_is_expired_true_after_timeout() {
     let t = setup();
     let c = client(&t.env, &t.contract);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2, &1);
     advance(&t.env, TIMEOUT_LEDGERS + 1);
     assert!(c.is_expired(&id));
+}
+
+// ─── Replay Protection Tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_replay_create_tip_fails() {
+    let t = setup();
+    let c = client(&t.env, &t.contract);
+    c.create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2, &1);
+    assert_eq!(
+        c.try_create_multisig_tip(&t.tipper, &t.artist, &10_000_000_000_i128, &2, &1),
+        Err(Ok(Error::InvalidNonce))
+    );
+}
+
+#[test]
+fn test_replay_approve_tip_fails() {
+    let t = setup();
+    let c = client(&t.env, &t.contract);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &2, &1);
+    c.approve_tip(&id, &t.signer1, &1);
+    assert_eq!(
+        c.try_approve_tip(&id, &t.signer1, &1),
+        Err(Ok(Error::InvalidNonce))
+    );
+}
+
+#[test]
+fn test_replay_cancel_tip_fails() {
+    let t = setup();
+    let c = client(&t.env, &t.contract);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &100_0000000_i128, &3, &1);
+    c.cancel_tip(&id, &t.tipper, &2);
+    assert_eq!(
+        c.try_cancel_tip(&id, &t.tipper, &2),
+        Err(Ok(Error::InvalidNonce))
+    );
 }
 
 // ─── Full Lifecycle ───────────────────────────────────────────────────────────
@@ -400,15 +439,15 @@ fn test_full_2_of_3_lifecycle() {
     let amt = 10_000_000_000_i128;
 
     // Create proposal requiring 2 of 3 sigs.
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &2);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &2, &1);
 
     // First sig — not executed yet.
-    assert!(!c.approve_tip(&id, &t.signer1));
+    assert!(!c.approve_tip(&id, &t.signer1, &1));
     assert_eq!(c.approvals_needed(&id), 1);
 
     // Second sig — executes and pays artist.
     let before = tc.balance(&t.artist);
-    assert!(c.approve_tip(&id, &t.signer2));
+    assert!(c.approve_tip(&id, &t.signer2, &1));
     assert_eq!(tc.balance(&t.artist) - before, amt);
     assert_eq!(c.get_tip(&id).unwrap().status, TipStatus::Executed);
 }
@@ -421,14 +460,14 @@ fn test_full_timeout_and_refund_lifecycle() {
     let amt = 200_0000000_i128;
 
     let before = tc.balance(&t.tipper);
-    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &3);
+    let id = c.create_multisig_tip(&t.tipper, &t.artist, &amt, &3, &1);
 
     // Only 1 of 3 sigs collected.
-    c.approve_tip(&id, &t.signer1);
+    c.approve_tip(&id, &t.signer1, &1);
 
     // Timeout — anyone cancels and tipper is refunded.
     advance(&t.env, TIMEOUT_LEDGERS + 1);
-    c.cancel_tip(&id, &t.signer2);
+    c.cancel_tip(&id, &t.signer2, &1);
     assert_eq!(tc.balance(&t.tipper), before);
 }
 

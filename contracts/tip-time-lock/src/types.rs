@@ -11,6 +11,7 @@ pub enum Error {
     Unauthorized = 5,
     InvalidUnlockTime = 6,
     RefundNotAvailableYet = 7,
+    InvalidNonce = 8,
 }
 
 #[contracttype]
@@ -46,4 +47,5 @@ pub enum DataKey {
     Tip(String),
     ArtistTips(Address),
     Counter,
+    ActorNonce(Address),
 }

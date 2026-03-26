@@ -34,6 +34,8 @@ pub enum DataKey {
     Nonce,
     /// Approved signers whitelist (Vec<Address>)
     Signers,
+    /// Per-actor nonce for replay protection
+    ActorNonce(Address),
 }
 
 // ─── Data Structures ──────────────────────────────────────────────────────────
@@ -154,6 +156,8 @@ pub enum Error {
     Overflow = 14,
     /// Only tipper can cancel before timeout.
     OnlyTipperCanCancel = 15,
+    /// Invalid nonce for replay protection.
+    InvalidNonce = 16,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -248,9 +252,17 @@ impl MultisigContract {
         artist: Address,
         amount: i128,
         required_sigs: u32,
+        nonce: u64,
     ) -> Result<String, Error> {
         tipper.require_auth();
         Self::assert_initialised(&env)?;
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&DataKey::ActorNonce(tipper.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&DataKey::ActorNonce(tipper.clone()), &nonce);
 
         if amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -324,9 +336,16 @@ impl MultisigContract {
     ///
     /// Returns `true` if this approval triggered execution (threshold met).
     /// Returns `false` if more signatures are still needed.
-    pub fn approve_tip(env: Env, tip_id: String, approver: Address) -> Result<bool, Error> {
+    pub fn approve_tip(env: Env, tip_id: String, approver: Address, nonce: u64) -> Result<bool, Error> {
         approver.require_auth();
         Self::assert_initialised(&env)?;
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&DataKey::ActorNonce(approver.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&DataKey::ActorNonce(approver.clone()), &nonce);
 
         // Verify approver is whitelisted.
         Self::assert_whitelisted(&env, &approver)?;
@@ -423,8 +442,15 @@ impl MultisigContract {
     /// - Tipper can cancel at any time before execution.
     /// - Anyone can cancel after the timeout has elapsed.
     /// Refunds locked tokens to the tipper.
-    pub fn cancel_tip(env: Env, tip_id: String, caller: Address) -> Result<(), Error> {
+    pub fn cancel_tip(env: Env, tip_id: String, caller: Address, nonce: u64) -> Result<(), Error> {
         caller.require_auth();
+
+        // Replay protection: check and update actor nonce
+        let last_nonce: u64 = env.storage().instance().get(&DataKey::ActorNonce(caller.clone())).unwrap_or(0);
+        if nonce <= last_nonce {
+            return Err(Error::InvalidNonce);
+        }
+        env.storage().instance().set(&DataKey::ActorNonce(caller.clone()), &nonce);
 
         let mut proposal: TipProposal = env
             .storage()
