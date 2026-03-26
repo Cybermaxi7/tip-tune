@@ -9,6 +9,52 @@ mod test;
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
 use types::{Asset, Error, TimeLockStatus, TimeLockTip};
 
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TipActionEvent {
+    pub action: String,
+    pub tip_id: String,
+    pub tipper: Address,
+    pub artist: Address,
+    pub amount: i128,
+    pub required_sigs: Option<u32>,
+    pub approvals: Option<u32>,
+    pub operator: Address,
+    pub status: String,
+    pub expires_at: Option<u64>,
+    pub timestamp: u64,
+}
+
+impl TipActionEvent {
+    fn new(
+        env: &Env,
+        action: &str,
+        tip_id: String,
+        tipper: Address,
+        artist: Address,
+        amount: i128,
+        required_sigs: Option<u32>,
+        approvals: Option<u32>,
+        operator: Address,
+        status: &str,
+        expires_at: Option<u64>,
+    ) -> TipActionEvent {
+        TipActionEvent {
+            action: String::from_str(env, action),
+            tip_id,
+            tipper,
+            artist,
+            amount,
+            required_sigs,
+            approvals,
+            operator,
+            status: String::from_str(env, status),
+            expires_at,
+            timestamp: env.ledger().timestamp(),
+        }
+    }
+}
+
 #[contract]
 pub struct TimeLockContract;
 
@@ -71,10 +117,22 @@ impl TimeLockContract {
 
         storage::save_tip(&env, lock_id.clone(), &tip);
 
-        // Emit event
+        // Emit canonical tip action event
         env.events().publish(
-            (symbol_short!("tip_lock"), tip.tipper.clone(), tip.artist.clone()),
-            tip.clone(),
+            (symbol_short!("TIP"), symbol_short!("CREATE")),
+            TipActionEvent::new(
+                &env,
+                "CREATE",
+                lock_id.clone(),
+                tip.tipper.clone(),
+                tip.artist.clone(),
+                tip.amount,
+                None,
+                None,
+                tip.tipper.clone(),
+                "LOCKED",
+                Some(tip.unlock_time),
+            ),
         );
 
         Ok(lock_id)
@@ -113,10 +171,22 @@ impl TimeLockContract {
             }
         }
 
-        // Emit event
+        // Emit canonical tip action event for claim (execute)
         env.events().publish(
-            (symbol_short!("tip_claim"), tip.tipper.clone(), tip.artist.clone()),
-            tip.clone(),
+            (symbol_short!("TIP"), symbol_short!("EXECUTE")),
+            TipActionEvent::new(
+                &env,
+                "EXECUTE",
+                tip.lock_id.clone(),
+                tip.tipper.clone(),
+                tip.artist.clone(),
+                tip.amount,
+                None,
+                None,
+                artist.clone(),
+                "CLAIMED",
+                Some(tip.unlock_time),
+            ),
         );
 
         Ok(tip.amount)
@@ -157,10 +227,22 @@ impl TimeLockContract {
             }
         }
 
-        // Emit event
+        // Emit canonical tip action event for refund (cancel)
         env.events().publish(
-            (symbol_short!("tip_rfnd"), tip.tipper.clone(), tip.artist.clone()),
-            tip.clone(),
+            (symbol_short!("TIP"), symbol_short!("CANCEL")),
+            TipActionEvent::new(
+                &env,
+                "CANCEL",
+                tip.lock_id.clone(),
+                tip.tipper.clone(),
+                tip.artist.clone(),
+                tip.amount,
+                None,
+                None,
+                tipper.clone(),
+                "REFUNDED",
+                Some(tip.unlock_time),
+            ),
         );
 
         Ok(())

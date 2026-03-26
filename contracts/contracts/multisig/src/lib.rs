@@ -50,6 +50,52 @@ pub enum TipStatus {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TipActionEvent {
+    pub action: String,
+    pub tip_id: String,
+    pub tipper: Address,
+    pub artist: Address,
+    pub amount: i128,
+    pub required_sigs: Option<u32>,
+    pub approvals: Option<u32>,
+    pub operator: Address,
+    pub status: String,
+    pub expires_at: Option<u64>,
+    pub timestamp: u64,
+}
+
+impl TipActionEvent {
+    fn new(
+        env: &Env,
+        action: &str,
+        tip_id: String,
+        tipper: Address,
+        artist: Address,
+        amount: i128,
+        required_sigs: Option<u32>,
+        approvals: Option<u32>,
+        operator: Address,
+        status: &str,
+        expires_at: Option<u64>,
+    ) -> TipActionEvent {
+        TipActionEvent {
+            action: String::from_str(env, action),
+            tip_id,
+            tipper,
+            artist,
+            amount,
+            required_sigs,
+            approvals,
+            operator,
+            status: String::from_str(env, status),
+            expires_at,
+            timestamp: env.ledger().timestamp(),
+        }
+    }
+}
+
+#[contracttype]
 #[derive(Clone, Debug)]
 pub struct TipProposal {
     /// Unique tip identifier.
@@ -253,8 +299,20 @@ impl MultisigContract {
             .set(&DataKey::Tip(tip_id.clone()), &proposal);
 
         env.events().publish(
-            (symbol_short!("created"), tipper.clone()),
-            (tip_id.clone(), artist, amount, required_sigs),
+            (symbol_short!("TIP"), symbol_short!("CREATE")),
+            TipActionEvent::new(
+                &env,
+                "CREATE",
+                tip_id.clone(),
+                tipper.clone(),
+                artist.clone(),
+                amount,
+                Some(required_sigs),
+                Some(0),
+                tipper.clone(),
+                "PENDING",
+                Some(expires_at),
+            ),
         );
 
         Ok(tip_id)
@@ -299,8 +357,20 @@ impl MultisigContract {
         proposal.approvals.push_back(approver.clone());
 
         env.events().publish(
-            (symbol_short!("approved"), approver.clone()),
-            (tip_id.clone(), proposal.approvals.len()),
+            (symbol_short!("TIP"), symbol_short!("APPROVE")),
+            TipActionEvent::new(
+                &env,
+                "APPROVE",
+                tip_id.clone(),
+                proposal.tipper.clone(),
+                proposal.artist.clone(),
+                proposal.amount,
+                Some(proposal.required_sigs),
+                Some(proposal.approvals.len()),
+                approver.clone(),
+                "PENDING",
+                Some(proposal.expires_at),
+            ),
         );
 
         // Check if threshold is met.
@@ -320,8 +390,20 @@ impl MultisigContract {
                 .set(&DataKey::Tip(tip_id.clone()), &proposal);
 
             env.events().publish(
-                (symbol_short!("executed"), proposal.artist.clone()),
-                (tip_id, proposal.amount),
+                (symbol_short!("TIP"), symbol_short!("EXECUTE")),
+                TipActionEvent::new(
+                    &env,
+                    "EXECUTE",
+                    tip_id,
+                    proposal.tipper.clone(),
+                    proposal.artist.clone(),
+                    proposal.amount,
+                    Some(proposal.required_sigs),
+                    Some(proposal.approvals.len()),
+                    approver.clone(),
+                    "EXECUTED",
+                    Some(proposal.expires_at),
+                ),
             );
 
             return Ok(true);
@@ -377,8 +459,20 @@ impl MultisigContract {
             .set(&DataKey::Tip(tip_id.clone()), &proposal);
 
         env.events().publish(
-            (symbol_short!("cancelled"), proposal.tipper.clone()),
-            tip_id,
+            (symbol_short!("TIP"), symbol_short!("CANCEL")),
+            TipActionEvent::new(
+                &env,
+                "CANCEL",
+                tip_id.clone(),
+                proposal.tipper.clone(),
+                proposal.artist.clone(),
+                proposal.amount,
+                Some(proposal.required_sigs),
+                Some(proposal.approvals.len()),
+                caller.clone(),
+                "CANCELLED",
+                Some(proposal.expires_at),
+            ),
         );
 
         Ok(())
