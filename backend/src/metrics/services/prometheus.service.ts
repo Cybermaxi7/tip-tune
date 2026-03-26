@@ -20,9 +20,26 @@ export class PrometheusService {
   public readonly stellarTransactionSuccess: Counter;
   public readonly stellarTransactionFailure: Counter;
   
+  // Cache Metrics
+  public readonly cacheHitTotal: Counter;
+  public readonly cacheMissTotal: Counter;
+
+  // Scheduled Job Metrics
+  public readonly scheduledJobDuration: Histogram;
+  public readonly scheduledJobTotal: Counter;
+
+  // Search Metrics
+  public readonly searchQueryDuration: Histogram;
+
+  // Notification Metrics
+  public readonly notificationsSent: Counter;
+
+  // Verification Metrics
+  public readonly artistVerificationTotal: Counter;
+
   // Queue Metrics
   public readonly queueLength: Gauge;
-  
+
   // System Metrics
   public readonly memoryUsage: Gauge;
   public readonly cpuUsage: Gauge;
@@ -97,6 +114,62 @@ export class PrometheusService {
       name: 'stellar_transactions_failure_total',
       help: 'Total number of failed Stellar transactions',
       labelNames: ['operation_type', 'error_code'],
+      registers: [this.registry],
+    });
+
+    // Cache Metrics
+    this.cacheHitTotal = new Counter({
+      name: 'cache_hit_total',
+      help: 'Total number of cache hits',
+      labelNames: ['cache_name'],
+      registers: [this.registry],
+    });
+
+    this.cacheMissTotal = new Counter({
+      name: 'cache_miss_total',
+      help: 'Total number of cache misses',
+      labelNames: ['cache_name'],
+      registers: [this.registry],
+    });
+
+    // Scheduled Job Metrics
+    this.scheduledJobDuration = new Histogram({
+      name: 'scheduled_job_duration_seconds',
+      help: 'Duration of scheduled jobs in seconds',
+      labelNames: ['job_name', 'status'],
+      buckets: [0.1, 0.5, 1, 5, 10, 30, 60],
+      registers: [this.registry],
+    });
+
+    this.scheduledJobTotal = new Counter({
+      name: 'scheduled_job_total',
+      help: 'Total number of scheduled job executions',
+      labelNames: ['job_name', 'status'],
+      registers: [this.registry],
+    });
+
+    // Search Metrics
+    this.searchQueryDuration = new Histogram({
+      name: 'search_query_duration_seconds',
+      help: 'Duration of search queries in seconds',
+      labelNames: ['query_type'],
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5],
+      registers: [this.registry],
+    });
+
+    // Notification Metrics
+    this.notificationsSent = new Counter({
+      name: 'notifications_sent_total',
+      help: 'Total number of notifications sent',
+      labelNames: ['channel', 'status'],
+      registers: [this.registry],
+    });
+
+    // Verification Metrics
+    this.artistVerificationTotal = new Counter({
+      name: 'artist_verification_total',
+      help: 'Total number of artist verification attempts',
+      labelNames: ['outcome'],
       registers: [this.registry],
     });
 

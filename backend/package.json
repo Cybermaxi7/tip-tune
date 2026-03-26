@@ -106,7 +106,7 @@
     },
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/(analytics|artiste-payout|auth|comments|events-live-show|follows|genres|platinum-fee|playlists|search|social-sharing|subscription-tiers|tips|track-listening-right-management|track-play-count|waveform)/.*\\.spec\\.ts$"
+      "<rootDir>/(analytics|artiste-payout|auth|comments|embed|events-live-show|follows|genres|platinum-fee|playlists|search|social-sharing|subscription-tiers|tips|track-listening-right-management|track-play-count|waveform)/.*\\.spec\\.ts$"
     ],
     "moduleFileExtensions": [
       "js",

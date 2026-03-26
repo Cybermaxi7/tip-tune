@@ -65,4 +65,33 @@ describe('PrometheusService', () => {
     const metrics = await service.getMetrics();
     expect(metrics).toContain('app_memory_usage_bytes');
   });
+
+  it('should collect cache metrics', () => {
+    service.cacheHitTotal.inc({ cache_name: 'user_profiles' });
+    service.cacheMissTotal.inc({ cache_name: 'user_profiles' });
+    expect(service.cacheHitTotal).toBeDefined();
+    expect(service.cacheMissTotal).toBeDefined();
+  });
+
+  it('should collect scheduled job metrics', () => {
+    service.scheduledJobDuration.observe({ job_name: 'sync_tips', status: 'success' }, 1.5);
+    service.scheduledJobTotal.inc({ job_name: 'sync_tips', status: 'success' });
+    expect(service.scheduledJobDuration).toBeDefined();
+    expect(service.scheduledJobTotal).toBeDefined();
+  });
+
+  it('should collect search query metrics', () => {
+    service.searchQueryDuration.observe({ query_type: 'full_text' }, 0.25);
+    expect(service.searchQueryDuration).toBeDefined();
+  });
+
+  it('should collect notification metrics', () => {
+    service.notificationsSent.inc({ channel: 'email', status: 'sent' });
+    expect(service.notificationsSent).toBeDefined();
+  });
+
+  it('should collect artist verification metrics', () => {
+    service.artistVerificationTotal.inc({ outcome: 'approved' });
+    expect(service.artistVerificationTotal).toBeDefined();
+  });
 });

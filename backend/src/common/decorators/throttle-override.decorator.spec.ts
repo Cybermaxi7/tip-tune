@@ -25,21 +25,21 @@ describe('Throttle Decorators', () => {
 
     it('should have correct TIP_SUBMISSION preset', () => {
       expect(THROTTLE_PRESETS.TIP_SUBMISSION).toEqual({
-        limit: 30,
+        limit: 20,
         ttl: 60000,
       });
     });
 
     it('should have correct SEARCH preset', () => {
       expect(THROTTLE_PRESETS.SEARCH).toEqual({
-        limit: 100,
+        limit: 150,
         ttl: 60000,
       });
     });
 
     it('should have correct FILE_UPLOAD preset', () => {
       expect(THROTTLE_PRESETS.FILE_UPLOAD).toEqual({
-        limit: 5,
+        limit: 3,
         ttl: 60000,
       });
     });

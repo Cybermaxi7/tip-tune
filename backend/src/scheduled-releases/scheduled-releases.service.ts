@@ -336,9 +336,9 @@ export class ScheduledReleasesService {
       }
 
       // Archive or delete old failed releases
-      await this.scheduledReleaseRepository.delete({
-        id: oldFailedReleases.map((r) => r.id),
-      });
+      await this.scheduledReleaseRepository.delete(
+        oldFailedReleases.map((r) => r.id),
+      );
     }
   }
 
@@ -356,7 +356,6 @@ export class ScheduledReleasesService {
     // Mark track as public
     await this.trackRepository.update(release.trackId, {
       isPublic: true,
-      publishedAt: new Date(),
     });
 
     this.logger.log(`Track ${release.trackId} marked as public`);

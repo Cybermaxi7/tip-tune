@@ -36,7 +36,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let errorName = 'Internal Server Error';
-    let message = 'An unexpected error occurred';
+    let message: string | string[] = 'An unexpected error occurred';
     let details: any = undefined;
     let stack: string | undefined = undefined;
 
