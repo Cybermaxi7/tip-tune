@@ -66,9 +66,9 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
     [],
   );
 
-  const explorerTxUrl = `${STELLAR_EXPLORER_BASE}/tx/${stellarTxHash}`;
-  const explorerSenderUrl = `${STELLAR_EXPLORER_BASE}/account/${senderAddress}`;
-  const explorerReceiverUrl = `${STELLAR_EXPLORER_BASE}/account/${receiverAddress}`;
+  const explorerTxUrl = stellarTxHash ? `${STELLAR_EXPLORER_BASE}/tx/${stellarTxHash}` : '#';
+  const explorerSenderUrl = senderAddress ? `${STELLAR_EXPLORER_BASE}/account/${senderAddress}` : '#';
+  const explorerReceiverUrl = receiverAddress ? `${STELLAR_EXPLORER_BASE}/account/${receiverAddress}` : '#';
 
   return (
     <section
@@ -100,10 +100,10 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
         >
           <div className="flex items-center gap-2">
             <code className="break-all rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-              {stellarTxHash}
+              {stellarTxHash || 'N/A'}
             </code>
             <CopyButton
-              text={stellarTxHash}
+              text={stellarTxHash || ''}
               field="txHash"
               copiedField={copiedField}
               onCopy={copyToClipboard}
@@ -111,9 +111,9 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
           </div>
           <a
             href={explorerTxUrl}
-            target="_blank"
+            target={stellarTxHash ? '_blank' : undefined}
             rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary-blue hover:underline"
+            className={`mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary-blue hover:underline ${!stellarTxHash ? 'pointer-events-none opacity-50' : ''}`}
             data-testid="stellar-explorer-link"
           >
             View on Stellar Expert
@@ -139,11 +139,11 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
           testId="asset-type"
         >
           <span className="text-sm text-gray-900 dark:text-white">
-            {assetType === 'native' ? 'Native (XLM)' : assetType}
+            {assetType === 'native' ? 'Native (XLM)' : (assetType || 'N/A')}
           </span>
           {assetIssuer && (
             <span className="block text-xs text-gray-500 dark:text-gray-400">
-              Issuer: {truncateAddress(assetIssuer, 8, 8)}
+              Issuer: {truncateAddress(assetIssuer, 8, 8) || 'N/A'}
             </span>
           )}
         </ProofRow>
@@ -155,7 +155,7 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
               {senderAddress}
             </code>
             <CopyButton
-              text={senderAddress}
+              text={senderAddress || ''}
               field="senderAddress"
               copiedField={copiedField}
               onCopy={copyToClipboard}
@@ -163,9 +163,9 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
           </div>
           <a
             href={explorerSenderUrl}
-            target="_blank"
+            target={senderAddress ? '_blank' : undefined}
             rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-primary-blue dark:text-gray-400"
+            className={`mt-1 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-primary-blue dark:text-gray-400 ${!senderAddress ? 'pointer-events-none opacity-50' : ''}`}
           >
             View account <ExternalLink className="h-3 w-3" />
           </a>
@@ -175,10 +175,10 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
         <ProofRow icon={null} label="Destination Account" testId="destination-account">
           <div className="flex items-center gap-2">
             <code className="break-all rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-              {receiverAddress}
+              {receiverAddress || 'N/A'}
             </code>
             <CopyButton
-              text={receiverAddress}
+              text={receiverAddress || ''}
               field="receiverAddress"
               copiedField={copiedField}
               onCopy={copyToClipboard}
@@ -186,9 +186,9 @@ const BlockchainProof: React.FC<BlockchainProofProps> = ({ receipt }) => {
           </div>
           <a
             href={explorerReceiverUrl}
-            target="_blank"
+            target={receiverAddress ? '_blank' : undefined}
             rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-primary-blue dark:text-gray-400"
+            className={`mt-1 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-primary-blue dark:text-gray-400 ${!receiverAddress ? 'pointer-events-none opacity-50' : ''}`}
           >
             View account <ExternalLink className="h-3 w-3" />
           </a>

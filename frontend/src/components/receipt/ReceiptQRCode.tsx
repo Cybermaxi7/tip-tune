@@ -27,7 +27,7 @@ const ReceiptQRCode: React.FC<ReceiptQRCodeProps> = ({
   stellarTxHash,
   size = 180,
 }) => {
-  const explorerUrl = `${STELLAR_EXPLORER_BASE}/${stellarTxHash}`;
+  const explorerUrl = stellarTxHash ? `${STELLAR_EXPLORER_BASE}/${stellarTxHash}` : '#';
 
   return (
     <section

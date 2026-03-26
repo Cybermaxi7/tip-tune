@@ -87,7 +87,7 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
 
   const displayTimestamp = stellarTimestamp ?? createdAt;
   const usdValue =
-    fiatAmount != null ? fiatAmount : exchangeRate != null ? amount * exchangeRate : null;
+    fiatAmount != null ? fiatAmount : exchangeRate != null ? (amount || 0) * exchangeRate : null;
 
   return (
     <section
@@ -109,8 +109,8 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
           className="text-3xl font-bold text-gray-900 dark:text-white"
           data-testid="tip-amount"
         >
-          {formatStellarAmount(amount)}{' '}
-          <span className="text-lg font-medium text-primary-blue">{assetCode}</span>
+          {formatStellarAmount(amount || 0)}{' '}
+          <span className="text-lg font-medium text-primary-blue">{assetCode || 'Asset'}</span>
         </p>
         {usdValue != null && (
           <p className="text-sm text-gray-500 dark:text-gray-400" data-testid="tip-usd-value">
@@ -137,15 +137,15 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
         <DetailRow
           icon={<DollarSign className="h-4 w-4" />}
           label="Asset"
-          value={assetCode}
+          value={assetCode || 'N/A'}
         />
 
         {/* Sender */}
         <DetailRow
           icon={<ArrowUpRight className="h-4 w-4" />}
           label="From (Tipper)"
-          value={truncateAddress(senderAddress, 6, 6)}
-          title={senderAddress}
+          value={truncateAddress(senderAddress || '', 6, 6) || 'N/A'}
+          title={senderAddress || 'No address'}
           mono
         />
 
@@ -155,10 +155,10 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
           label="To (Artist)"
           value={
             artist?.artistName
-              ? `${artist.artistName} (${truncateAddress(receiverAddress, 6, 6)})`
-              : truncateAddress(receiverAddress, 6, 6)
+              ? `${artist.artistName} (${truncateAddress(receiverAddress || '', 6, 6)})`
+              : truncateAddress(receiverAddress || '', 6, 6) || 'N/A'
           }
-          title={receiverAddress}
+          title={receiverAddress || 'No address'}
         />
 
         {/* Artist profile summary */}
@@ -176,10 +176,10 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
                   />
                 ) : (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-blue/20 text-xs font-semibold text-primary-blue">
-                    {artist.artistName.charAt(0).toUpperCase()}
+                    {(artist.artistName || 'A').charAt(0).toUpperCase()}
                   </span>
                 )}
-                <span>{artist.artistName}</span>
+                <span>{artist.artistName || 'Unknown Artist'}</span>
                 {artist.genre && (
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                     {artist.genre}
@@ -204,7 +204,7 @@ const TransactionDetails: React.FC<TransactionDetailsProps> = ({ receipt }) => {
                     className="h-6 w-6 rounded object-cover"
                   />
                 )}
-                <span>{track.title}</span>
+                <span>{track.title || 'Untitled Track'}</span>
               </div>
             }
           />

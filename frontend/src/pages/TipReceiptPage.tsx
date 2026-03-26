@@ -72,7 +72,7 @@ const TipReceiptPage: React.FC = () => {
     const shareData: ShareData = {
       title: 'TipTune Receipt',
       text: receipt
-        ? `Check out my tip of ${receipt.amount} ${receipt.assetCode} on TipTune!`
+        ? `Check out my tip of ${receipt.amount ?? '0'} ${receipt.assetCode ?? 'asset'} on TipTune!`
         : 'View tip receipt on TipTune',
       url,
     };
@@ -197,7 +197,7 @@ const TipReceiptPage: React.FC = () => {
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Receipt ID:{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono dark:bg-gray-700">
-              {receipt.id}
+              {receipt.id || 'N/A'}
             </code>
           </p>
         </header>
@@ -211,7 +211,7 @@ const TipReceiptPage: React.FC = () => {
           <BlockchainProof receipt={receipt} />
 
           {/* QR Code */}
-          <ReceiptQRCode stellarTxHash={receipt.stellarTxHash} />
+          <ReceiptQRCode stellarTxHash={receipt.stellarTxHash || ''} />
         </div>
 
         {/* ---- Export & Downloads (outside capture area) ---- */}

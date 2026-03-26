@@ -24,7 +24,7 @@ function buildPrintableHTML(receipt: TipReceipt): string {
     receipt.fiatAmount != null
       ? receipt.fiatAmount
       : receipt.exchangeRate != null
-        ? receipt.amount * receipt.exchangeRate
+        ? (receipt.amount || 0) * receipt.exchangeRate
         : null;
 
   return `
@@ -32,7 +32,7 @@ function buildPrintableHTML(receipt: TipReceipt): string {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>TipTune Receipt – ${receipt.id}</title>
+  <title>TipTune Receipt – ${receipt.id || 'N/A'}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; padding: 40px; max-width: 700px; margin: 0 auto; }
@@ -65,28 +65,28 @@ function buildPrintableHTML(receipt: TipReceipt): string {
   </div>
 
   <div class="amount-section">
-    <span class="status status-${receipt.status}">${receipt.status === 'verified' ? 'Confirmed' : receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1)}</span>
-    <div class="amount">${formatStellarAmount(receipt.amount)} <span class="asset">${receipt.assetCode}</span></div>
+    <span class="status status-${receipt.status || 'pending'}">${(receipt.status || 'pending') === 'verified' ? 'Confirmed' : (receipt.status || 'pending').charAt(0).toUpperCase() + (receipt.status || 'pending').slice(1)}</span>
+    <div class="amount">${formatStellarAmount(receipt.amount || 0)} <span class="asset">${receipt.assetCode || 'Asset'}</span></div>
     ${usdValue != null ? `<div class="usd">≈ ${formatCurrency(usdValue)} USD</div>` : ''}
   </div>
 
   <div class="section">
     <h2>Transaction Details</h2>
-    <div class="row"><span class="label">Receipt ID</span><span class="value mono">${receipt.id}</span></div>
+    <div class="row"><span class="label">Receipt ID</span><span class="value mono">${receipt.id || 'N/A'}</span></div>
     <div class="row"><span class="label">Date & Time</span><span class="value">${formatDate(receipt.stellarTimestamp ?? receipt.createdAt)}</span></div>
     <div class="row"><span class="label">Tip Type</span><span class="value">${receipt.type === 'track' ? 'Track Tip' : 'Artist Tip'}</span></div>
-    <div class="row"><span class="label">Asset</span><span class="value">${receipt.assetCode} (${receipt.assetType === 'native' ? 'Native' : receipt.assetType})</span></div>
+    <div class="row"><span class="label">Asset</span><span class="value">${receipt.assetCode || 'Asset'} (${receipt.assetType === 'native' ? 'Native' : (receipt.assetType || 'N/A')})</span></div>
     ${receipt.message ? `<div class="row"><span class="label">Message</span><span class="value">"${receipt.message}"</span></div>` : ''}
-    ${receipt.artist ? `<div class="row"><span class="label">Artist</span><span class="value">${receipt.artist.artistName}</span></div>` : ''}
-    ${receipt.track ? `<div class="row"><span class="label">Track</span><span class="value">${receipt.track.title}</span></div>` : ''}
+    ${receipt.artist ? `<div class="row"><span class="label">Artist</span><span class="value">${receipt.artist.artistName || 'Unknown'}</span></div>` : ''}
+    ${receipt.track ? `<div class="row"><span class="label">Track</span><span class="value">${receipt.track.title || 'Unknown'}</span></div>` : ''}
   </div>
 
   <div class="section">
     <h2>Blockchain Proof</h2>
-    <div class="row"><span class="label">Transaction Hash</span><span class="value mono">${receipt.stellarTxHash}</span></div>
-    <div class="row"><span class="label">Source Account</span><span class="value mono">${receipt.senderAddress}</span></div>
-    <div class="row"><span class="label">Destination Account</span><span class="value mono">${receipt.receiverAddress}</span></div>
-    <div class="row"><span class="label">Stellar Explorer</span><span class="value"><a href="https://stellar.expert/explorer/testnet/tx/${receipt.stellarTxHash}">View Transaction</a></span></div>
+    <div class="row"><span class="label">Transaction Hash</span><span class="value mono">${receipt.stellarTxHash || 'N/A'}</span></div>
+    <div class="row"><span class="label">Source Account</span><span class="value mono">${receipt.senderAddress || 'N/A'}</span></div>
+    <div class="row"><span class="label">Destination Account</span><span class="value mono">${receipt.receiverAddress || 'N/A'}</span></div>
+    <div class="row"><span class="label">Stellar Explorer</span><span class="value"><a href="https://stellar.expert/explorer/testnet/tx/${receipt.stellarTxHash || ''}">View Transaction</a></span></div>
     ${receipt.stellarMemo ? `<div class="row"><span class="label">Memo</span><span class="value">${receipt.stellarMemo}</span></div>` : ''}
     ${receipt.distributionHash ? `<div class="row"><span class="label">Distribution Hash</span><span class="value mono">${receipt.distributionHash}</span></div>` : ''}
   </div>
@@ -144,7 +144,7 @@ const ReceiptPDFExport: React.FC<ReceiptPDFExportProps> = ({ receipt, receiptRef
         backgroundColor: '#ffffff',
       });
       const link = document.createElement('a');
-      link.download = `tiptune-receipt-${receipt.id.slice(0, 8)}.png`;
+      link.download = `tiptune-receipt-${(receipt.id || 'unknown').slice(0, 8)}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
