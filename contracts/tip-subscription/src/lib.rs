@@ -34,7 +34,7 @@ impl TipSubscriptionContract {
 
         let count_key = symbol_short!("sub_cnt");
         let count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
-        let next_count = count + 1;
+        let next_count = count.checked_add(1).ok_or(Error::Overflow)?;
         env.storage().instance().set(&count_key, &next_count);
 
         let mut buffer = [0u8; 10];
@@ -55,7 +55,9 @@ impl TipSubscriptionContract {
             SubscriptionFrequency::Weekly => WEEK_IN_SECONDS,
             SubscriptionFrequency::Monthly => MONTH_IN_SECONDS,
         };
-        let next_payment_timestamp = current_time + duration;
+        let next_payment_timestamp = current_time
+            .checked_add(duration)
+            .ok_or(Error::TimestampOverflow)?;
 
         let subscription = Subscription {
             id: sub_id.clone(),
@@ -98,7 +100,9 @@ impl TipSubscriptionContract {
             SubscriptionFrequency::Weekly => WEEK_IN_SECONDS,
             SubscriptionFrequency::Monthly => MONTH_IN_SECONDS,
         };
-        sub.next_payment_timestamp = current_time + duration;
+        sub.next_payment_timestamp = current_time
+            .checked_add(duration)
+            .ok_or(Error::TimestampOverflow)?;
 
         write_subscription(&env, &subscription_id, &sub);
 

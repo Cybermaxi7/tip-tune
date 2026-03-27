@@ -13,8 +13,8 @@ pub enum Error {
     TrackNotFound = 3,
     InvalidAmount = 4,
     NoCollaborators = 5,
-    InvalidAsset = 6,
-}
+    InvalidAsset = 6,    Overflow = 7,          // Amount overflow in distribution
+    Underflow = 8,         // Amount underflow in distribution}
 
 /// Represents a supported asset type
 #[contracttype]
@@ -98,6 +98,7 @@ impl AutoRoyaltyDistribution {
 
     /// Receive a tip/royalty and automatically distribute it among collaborators.
     /// Handles rounding by giving remainder to the first collaborator (no loss).
+    /// Uses checked arithmetic to prevent overflow/underflow.
     pub fn receive_and_distribute(
         env: Env,
         track_id: String,
@@ -117,19 +118,32 @@ impl AutoRoyaltyDistribution {
         let mut distributions: Vec<(Address, i128)> = Vec::new(&env);
         let mut distributed: i128 = 0;
 
-        // Calculate each collaborator's share
+        // Calculate each collaborator's share using checked arithmetic
         for i in 0..collaborators.len() {
             let collab = collaborators.get(i).unwrap();
-            let share = (amount * collab.percentage as i128) / 10000;
+            // Use checked_mul and checked_div to prevent overflow
+            let share = amount
+                .checked_mul(collab.percentage as i128)
+                .ok_or(Error::Overflow)?
+                .checked_div(10000)
+                .ok_or(Error::Overflow)?;
             distributions.push_back((collab.address.clone(), share));
-            distributed += share;
+            distributed = distributed
+                .checked_add(share)
+                .ok_or(Error::Overflow)?;
         }
 
         // Handle rounding remainder — give it to the first collaborator to prevent loss
-        let remainder = amount - distributed;
+        let remainder = amount
+            .checked_sub(distributed)
+            .ok_or(Error::Underflow)?;
         if remainder > 0 && !distributions.is_empty() {
             let first = distributions.get(0).unwrap();
-            distributions.set(0, (first.0, first.1 + remainder));
+            let new_first_share = first
+                .1
+                .checked_add(remainder)
+                .ok_or(Error::Overflow)?;
+            distributions.set(0, (first.0, new_first_share));
         }
 
         // Log the distribution
@@ -146,9 +160,12 @@ impl AutoRoyaltyDistribution {
             .instance()
             .get(&DataKey::DistributionCount)
             .unwrap_or(0);
+        let new_count = count
+            .checked_add(1)
+            .ok_or(Error::Overflow)?;
         env.storage()
             .instance()
-            .set(&DataKey::DistributionCount, &(count + 1));
+            .set(&DataKey::DistributionCount, &new_count);
 
         // Emit distribution event
         env.events()
