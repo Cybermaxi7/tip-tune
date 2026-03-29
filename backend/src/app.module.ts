@@ -42,6 +42,8 @@ import { SubscriptionsModule } from "./subscription-tiers/subscriptions.module";
 import { PlayCountModule } from "./track-play-count/play-count.module";
 import { RecommendationsModule } from "./recommendations/recommendations.module";
 import { EmbedModule } from "./embed/embed.module";
+import { ReferralModule } from "./social-sharing/referral.module";
+import { PayoutsModule } from "./artiste-payout/payouts.module";
 import { validate } from "./config/env.validation";
 
 @Module({
@@ -122,6 +124,8 @@ import { validate } from "./config/env.validation";
     SubscriptionsModule,
     RecommendationsModule,
     EmbedModule,
+    ReferralModule,
+    PayoutsModule,
   ],
   controllers: [],
   providers: [
