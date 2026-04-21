@@ -1,5 +1,30 @@
 [workspace]
-members = ["lottery", "tip-escrow", "arithmetic-utils"]
+members = [
+    "access_control",
+    "arithmetic-utils",
+    "artist-allowlist",
+    "auto-royalty-distribution",
+    "benchmark",
+    "contracts",
+    "drip-tip-matching",
+    "fan-token",
+    "governance",
+    "lottery",
+    "reward-token",
+    "royalty-split",
+    "storage_control",
+    "target",
+    "tip_vault",
+    "tip-bridge",
+    "tip-escrow",
+    "tip-goal-campaign",
+    "tip-nft-badge",
+    "tip-streaming",
+    "tip-subscription",
+    "tip-time-lock",
+    "tip-verification",
+    "track_access_control",
+]
 
 [profile.release]
 opt-level = "z"
