@@ -25,6 +25,9 @@ impl SafeArithmetic {
     /// Safe subtraction that returns error on underflow
     #[inline]
     pub fn safe_sub(a: i128, b: i128) -> Result<i128, ArithmeticError> {
+        if b > a {
+            return Err(ArithmeticError::Underflow);
+        }
         a.checked_sub(b).ok_or(ArithmeticError::Underflow)
     }
 
@@ -91,6 +94,9 @@ impl SafeArithmetic {
     /// Compound subtraction for depletion operations
     #[inline]
     pub fn deplete(current: i128, reduction: i128) -> Result<i128, ArithmeticError> {
+        if reduction > current {
+            return Err(ArithmeticError::Underflow);
+        }
         current
             .checked_sub(reduction)
             .ok_or(ArithmeticError::Underflow)
