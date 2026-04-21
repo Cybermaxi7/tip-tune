@@ -1,5 +1,5 @@
 [workspace]
-members = ["lottery", "tip-escrow"]
+members = ["lottery", "tip-escrow", "arithmetic-utils"]
 
 [profile.release]
 opt-level = "z"
