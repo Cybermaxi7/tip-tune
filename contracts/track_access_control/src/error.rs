@@ -8,4 +8,5 @@ pub enum Error {
     TipTooLow = 2,
     TrackNotFound = 3,
     AlreadyUnlocked = 4,
+    ProofAlreadyUsed = 5,
 }
