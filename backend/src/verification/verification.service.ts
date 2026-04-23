@@ -22,6 +22,8 @@ import { CreateVerificationRequestDto } from "./dto/create-verification-request.
 import { ReviewVerificationRequestDto } from "./dto/review-verification-request.dto";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "@/notifications/notification.entity";
+import { Inject } from "@nestjs/common";
+import { IStellarReadProvider } from "../stellar/stellar-provider.interface";
 
 @Injectable()
 export class VerificationService {
@@ -43,6 +45,8 @@ export class VerificationService {
     private readonly artistRepository: Repository<Artist>,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    @Inject('STELLAR_PROVIDER')
+    private readonly stellarProvider: IStellarReadProvider,
   ) {
     this.uploadDir =
       this.configService.get<string>("VERIFICATION_UPLOAD_DIR") ||

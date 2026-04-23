@@ -18,6 +18,7 @@ import {
   ReferralCodeResponseDto,
   ReferralStatsDto,
 } from "./referral.dto";
+import { RewardDispatcherService } from "./reward-dispatcher.service";
 
 const nanoid = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
 
@@ -28,10 +29,10 @@ export class ReferralService {
   constructor(
     @InjectRepository(ReferralCode)
     private readonly referralCodeRepo: Repository<ReferralCode>,
-    @InjectRepository(Referral)
     private readonly referralRepo: Repository<Referral>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly rewardDispatcher: RewardDispatcherService,
   ) {}
 
   // ─── Generate Code ────────────────────────────────────────────────────────
@@ -191,8 +192,17 @@ export class ReferralService {
       `Reward claimed for referrer ${referral.referrerId}: ${referral.referralCode.rewardType} = ${referral.referralCode.rewardValue}`,
     );
 
-    // TODO: integrate with reward dispatcher (XLM payment, badge grant, etc.)
-    // await this.rewardDispatcher.dispatch(referral.referrerId, referral.referralCode);
+    // Integrate with reward dispatcher
+    try {
+      await this.rewardDispatcher.dispatch(referral.referrerId, {
+        type: referral.referralCode.rewardType,
+        value: Number(referral.referralCode.rewardValue),
+      });
+    } catch (err) {
+      this.logger.error(`Reward dispatch failed for referral ${referral.id}: ${err.message}`);
+      // We don't revert the claim status because that would allow duplicate attempts.
+      // In a real system, we might use a DLQ or retry mechanism.
+    }
   }
 
   // ─── Stats ────────────────────────────────────────────────────────────────

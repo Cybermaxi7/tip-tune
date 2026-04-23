@@ -37,6 +37,8 @@ import { ArtistStatusModule } from "./artist-status/artist-status.module";
 import { WebSocketModule } from "./websocket/websocket.module";
 import { CustomThrottlerRedisStorage } from "./custom-throttler-storage-redis";
 import { VaryAcceptEncodingMiddleware } from "./common/middleware/vary-accept-encoding.middleware";
+import { AssetCatalogModule } from "./assets/asset-catalog.module";
+import { AssetsModule } from "./assets/assets.module";
 
 @Module({
   imports: [
@@ -68,6 +70,8 @@ import { VaryAcceptEncodingMiddleware } from "./common/middleware/vary-accept-en
         };
       },
     }),
+    AssetCatalogModule,
+    AssetsModule,
     CommonModule,
     MetricsModule,
     TypeOrmModule.forRoot({

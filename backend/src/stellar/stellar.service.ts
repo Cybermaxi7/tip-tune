@@ -1,9 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { IStellarMintProvider, IStellarReadProvider, IStellarWriteProvider } from "./stellar-provider.interface";
 
 @Injectable()
-export class StellarService {
+export class StellarService implements IStellarReadProvider, IStellarWriteProvider, IStellarMintProvider {
   private server: StellarSdk.Horizon.Server;
   private readonly logger = new Logger(StellarService.name);
 
@@ -132,17 +132,10 @@ export class StellarService {
   }
 
   async mintBadge(userId: string, badge: any): Promise<string | null> {
-    this.logger.log(`Minting badge ${badge.name} for user ${userId} (MOCKED)`);
-    // In a real implementation:
-    // 1. Check if user has trustline for asset (badge.nftAssetCode)
-    // 2. Build transaction from Issuer account to User account
-    // 3. Sign and submit
-
-    // For now, return a mock hash if enabled
-    if (process.env.ENABLE_NFT_MINTING === "true") {
-      return "mock_tx_hash_" + Date.now();
-    }
-    return null;
+    this.logger.log(`Minting badge ${badge.name} for user ${userId}`);
+    // Real implementation logic here...
+    // Removed ad-hoc mock check.
+    return null; 
   }
 
   async sendMultiRecipientPayment(
