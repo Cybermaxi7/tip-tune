@@ -4,6 +4,8 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, Address, Env, String, Symbol, Vec,
 };
 
+mod events;
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LotteryError {
@@ -26,6 +28,7 @@ pub struct LotteryPool {
     pub pool_id: String,
     pub artist: Address,
     pub balance: i128,
+    pub escrowed: i128,
     pub contribution_rate: u32,
     pub draw_time: u64,
     pub status: LotteryStatus,
@@ -42,6 +45,7 @@ pub struct LotteryEntry {
     pub tipper: Address,
     pub tickets: u32,
     pub tip_amount: i128,
+    pub escrowed_amount: i128,
     pub entered_at: u64,
 }
 
@@ -84,8 +88,9 @@ impl Lottery {
 
         let pool = LotteryPool {
             pool_id: pool_id.clone(),
-            artist,
+            artist: artist.clone(),
             balance: 0,
+            escrowed: 0,
             contribution_rate,
             draw_time,
             status: LotteryStatus::Open,
@@ -98,8 +103,10 @@ impl Lottery {
         env.storage()
             .persistent()
             .set(&(pool_key, pool_id.clone()), &pool);
-        pool_ids.push_back(pool_id);
+        pool_ids.push_back(pool_id.clone());
         env.storage().persistent().set(&pool_ids_key, &pool_ids);
+
+        events::emit_lottery_created(&env, pool_id, &artist);
 
         Ok(())
     }
@@ -127,9 +134,10 @@ impl Lottery {
             return Err(LotteryError::LotteryNotOpen);
         }
 
-        // Calculate contribution to pool
-        let contribution = tip_amount * (pool.contribution_rate as i128) / 100;
-        pool.balance += contribution;
+        // Calculate contribution escrowed into the prize pool
+        let escrowed = tip_amount * (pool.contribution_rate as i128) / 100;
+        pool.balance += escrowed;
+        pool.escrowed += escrowed;
 
         // Calculate tickets (1 ticket per 10 XLM)
         let tickets = (tip_amount / 10) as u32;
@@ -148,11 +156,14 @@ impl Lottery {
             tipper: tipper.clone(),
             tickets,
             tip_amount,
+            escrowed_amount: escrowed,
             entered_at: env.ledger().timestamp(),
         });
         env.storage().persistent().set(&pool_id, &entries);
 
-        env.storage().persistent().set(&(pool_key, pool_id), &pool);
+        env.storage().persistent().set(&(pool_key, pool_id.clone()), &pool);
+
+        events::emit_entry(&env, pool_id, &tipper, tickets, escrowed);
 
         Ok(tickets)
     }
@@ -200,7 +211,9 @@ impl Lottery {
         pool.winner = Some(winner_address.clone());
         pool.status = LotteryStatus::Completed;
 
-        env.storage().persistent().set(&(pool_key, pool_id), &pool);
+        env.storage().persistent().set(&(pool_key, pool_id.clone()), &pool);
+
+        events::emit_winner_drawn(&env, pool_id, &winner_address);
 
         Ok(winner_address)
     }
@@ -222,7 +235,9 @@ impl Lottery {
         pool.status = LotteryStatus::Cancelled;
         pool.cancelled_at = Some(env.ledger().timestamp());
 
-        env.storage().persistent().set(&(pool_key, pool_id), &pool);
+        env.storage().persistent().set(&(pool_key, pool_id.clone()), &pool);
+
+        events::emit_cancelled(&env, pool_id);
 
         Ok(())
     }
@@ -253,7 +268,7 @@ impl Lottery {
 
         for entry in entries.iter() {
             if entry.tipper == tipper {
-                refund_amount += entry.tip_amount * (pool.contribution_rate as i128) / 100;
+                refund_amount += entry.escrowed_amount;
                 found = true;
             } else {
                 new_entries.push_back(entry);
@@ -265,6 +280,8 @@ impl Lottery {
         }
 
         env.storage().persistent().set(&pool_id, &new_entries);
+
+        events::emit_refund_claimed(&env, pool_id, &tipper, refund_amount);
 
         Ok(refund_amount)
     }
@@ -298,11 +315,14 @@ impl Lottery {
             return Err(LotteryError::ClaimWindowExpired);
         }
 
-        let prize = pool.balance;
+        let prize = pool.escrowed;
         pool.balance = 0;
+        pool.escrowed = 0;
         pool.claimed = true;
 
-        env.storage().persistent().set(&(pool_key, pool_id), &pool);
+        env.storage().persistent().set(&(pool_key, pool_id.clone()), &pool);
+
+        events::emit_prize_claimed(&env, pool_id, &caller, prize);
 
         Ok(prize)
     }
