@@ -88,3 +88,89 @@ fn test_track_not_found() {
     let res = client.try_distribute_royalties(&track_id, &1000);
     assert_eq!(res, Err(Ok(Error::TrackNotFound)));
 }
+
+#[test]
+fn test_update_collaborator() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RoyaltySplit);
+    let client = RoyaltySplitClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "track_update");
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    let mut collaborators = Vec::new(&env);
+    collaborators.push_back((user1.clone(), 6000));
+    collaborators.push_back((user2.clone(), 4000));
+    client.set_royalty_split(&track_id, &collaborators);
+
+    // Update user1 from 60% to 70%; user2 should drop to 30%
+    client.update_collaborator(&track_id, &user1, &7000);
+
+    let distributions = client.distribute_royalties(&track_id, &1000);
+    assert_eq!(distributions.get(0).unwrap(), (user1.clone(), 700));
+    assert_eq!(distributions.get(1).unwrap(), (user2.clone(), 300));
+}
+
+#[test]
+fn test_remove_collaborator() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RoyaltySplit);
+    let client = RoyaltySplitClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "track_remove");
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let user3 = Address::generate(&env);
+
+    let mut collaborators = Vec::new(&env);
+    collaborators.push_back((user1.clone(), 5000));
+    collaborators.push_back((user2.clone(), 3000));
+    collaborators.push_back((user3.clone(), 2000));
+    client.set_royalty_split(&track_id, &collaborators);
+
+    // Remove user2 (3000 bp); user3 should absorb their share (2000 + 3000 = 5000)
+    client.remove_collaborator(&track_id, &user2);
+
+    let distributions = client.distribute_royalties(&track_id, &1000);
+    assert_eq!(distributions.len(), 2);
+    assert_eq!(distributions.get(0).unwrap(), (user1.clone(), 500));
+    assert_eq!(distributions.get(1).unwrap(), (user3.clone(), 500));
+}
+
+#[test]
+fn test_cannot_remove_only_collaborator() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RoyaltySplit);
+    let client = RoyaltySplitClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "track_solo");
+    let user1 = Address::generate(&env);
+
+    let mut collaborators = Vec::new(&env);
+    collaborators.push_back((user1.clone(), 10000));
+    client.set_royalty_split(&track_id, &collaborators);
+
+    let res = client.try_remove_collaborator(&track_id, &user1);
+    assert_eq!(res, Err(Ok(Error::CannotRemoveOnlyCollaborator)));
+}
+
+#[test]
+fn test_collaborator_not_found() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RoyaltySplit);
+    let client = RoyaltySplitClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "track_notfound");
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    let mut collaborators = Vec::new(&env);
+    collaborators.push_back((user1.clone(), 6000));
+    collaborators.push_back((user2.clone(), 4000));
+    client.set_royalty_split(&track_id, &collaborators);
+
+    let res = client.try_remove_collaborator(&track_id, &stranger);
+    assert_eq!(res, Err(Ok(Error::CollaboratorNotFound)));
+}

@@ -1,8 +1,10 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, Address, Env, String, Vec,
 };
+
+mod events;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -13,6 +15,7 @@ pub enum Error {
     TrackNotFound = 3,
     CollaboratorNotFound = 4,
     AlreadyExists = 5,
+    CannotRemoveOnlyCollaborator = 6,
 }
 
 #[contracttype]
@@ -49,58 +52,150 @@ impl RoyaltySplit {
             .persistent()
             .set(&DataKey::Split(track_id.clone()), &collaborators);
 
-        // Emit event for the full split update
-        env.events().publish(
-            (symbol_short!("royalty"), symbol_short!("set"), track_id),
-            collaborators,
-        );
+        events::emit_split_set(&env, track_id);
 
         Ok(())
     }
 
-    /// Update a specific collaborator's split. Adjusts other collaborators proportionally?
-    /// Actually, let's keep it simple: Replace the whole split if it's more complex,
-    /// but let's provide a way to update one.
-    /// Safest update flow: update_collaborator_share(track_id, collab, new_share, other_collab_to_offset)
-    /// but the issue says "safer update and removal flows".
-    /// Let's add simple add/update and remove that check for 10000 total.
-    pub fn remove_collaborator(
+    /// Update a single collaborator's basis points.
+    /// The last collaborator in the list absorbs the difference to keep the total at 10,000.
+    /// Returns an error if the collaborator is not found or if the adjustment is impossible.
+    pub fn update_collaborator(
         env: Env,
         track_id: String,
         collaborator: Address,
+        new_bp: u32,
     ) -> Result<(), Error> {
-        let mut collaborators: Vec<(Address, u32)> = env
+        if new_bp == 0 || new_bp >= 10000 {
+            return Err(Error::InvalidPercentage);
+        }
+
+        let collabs: Vec<(Address, u32)> = env
             .storage()
             .persistent()
             .get(&DataKey::Split(track_id.clone()))
             .ok_or(Error::TrackNotFound)?;
 
-        let mut found_index = None;
-        for i in 0..collaborators.len() {
-            if collaborators.get(i).unwrap().0 == collaborator {
-                found_index = Some(i);
+        if collabs.len() < 2 {
+            return Err(Error::CannotRemoveOnlyCollaborator);
+        }
+
+        let last_idx = collabs.len() - 1;
+
+        // Find the target collaborator (must not be the last one)
+        let mut found_idx: Option<u32> = None;
+        let mut old_bp: u32 = 0;
+        for i in 0..collabs.len() {
+            let (addr, bp) = collabs.get(i).unwrap();
+            if addr == collaborator {
+                if i == last_idx {
+                    // Updating the last collaborator directly is not allowed;
+                    // it would break the remainder invariant.
+                    return Err(Error::InvalidPercentage);
+                }
+                found_idx = Some(i);
+                old_bp = bp;
                 break;
             }
         }
 
-        if let Some(idx) = found_index {
-            collaborators.remove(idx);
+        let idx = found_idx.ok_or(Error::CollaboratorNotFound)?;
 
-            // Note: After removal, total will not be 10000.
-            // The caller should call set_royalty_split again or we should enforce a redistribution.
-            // Safer: only allow removal if we automatically redistribute or if we require a full update.
-            // Let's just provide a way to check total after removal.
-            // Actually, keep it simple for now: set_royalty_split is the most atomic way.
-            // If the user wants granular removal, they must ensure the remaining add up to 10k.
-            // But how? Maybe they can't.
-            // Let's just stick to requirements: events and rounding.
+        // Calculate the adjusted share for the last collaborator.
+        let (last_addr, last_bp) = collabs.get(last_idx).unwrap();
+        let adjusted_last_bp = if new_bp > old_bp {
+            let diff = new_bp - old_bp;
+            if last_bp < diff {
+                return Err(Error::InvalidPercentage);
+            }
+            last_bp - diff
         } else {
-            return Err(Error::CollaboratorNotFound);
+            let diff = old_bp - new_bp;
+            last_bp.checked_add(diff).ok_or(Error::InvalidPercentage)?
+        };
+
+        if adjusted_last_bp == 0 {
+            return Err(Error::InvalidPercentage);
         }
 
-        // We only save if the total is still valid (which it won't be unless we had one collab at 10000)
-        // So granular updates are tricky for basis points.
-        // Let's just improve the error messages and events as requested.
+        // Rebuild the collaborator list with the updated values.
+        let mut updated: Vec<(Address, u32)> = Vec::new(&env);
+        for i in 0..collabs.len() {
+            let (addr, bp) = collabs.get(i).unwrap();
+            if i == idx {
+                updated.push_back((addr, new_bp));
+            } else if i == last_idx {
+                updated.push_back((addr, adjusted_last_bp));
+            } else {
+                updated.push_back((addr, bp));
+            }
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Split(track_id.clone()), &updated);
+
+        events::emit_collaborator_updated(&env, track_id, &collaborator, new_bp);
+
+        Ok(())
+    }
+
+    /// Remove a collaborator from the split.
+    /// Their basis points are redistributed to the last remaining collaborator.
+    /// Requires at least two collaborators so the total stays at 10,000.
+    pub fn remove_collaborator(
+        env: Env,
+        track_id: String,
+        collaborator: Address,
+    ) -> Result<(), Error> {
+        let collabs: Vec<(Address, u32)> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Split(track_id.clone()))
+            .ok_or(Error::TrackNotFound)?;
+
+        if collabs.len() < 2 {
+            return Err(Error::CannotRemoveOnlyCollaborator);
+        }
+
+        // Find the collaborator to remove.
+        let mut found_idx: Option<u32> = None;
+        let mut removed_bp: u32 = 0;
+        for i in 0..collabs.len() {
+            let (addr, bp) = collabs.get(i).unwrap();
+            if addr == collaborator {
+                found_idx = Some(i);
+                removed_bp = bp;
+                break;
+            }
+        }
+
+        let idx = found_idx.ok_or(Error::CollaboratorNotFound)?;
+
+        // Rebuild without the removed collaborator; give their share to the last entry.
+        let new_len = collabs.len() - 1;
+        let last_before_removal = collabs.len() - 1;
+
+        let mut updated: Vec<(Address, u32)> = Vec::new(&env);
+        for i in 0..collabs.len() {
+            if i == idx {
+                continue;
+            }
+            let (addr, bp) = collabs.get(i).unwrap();
+            // The last entry in the new list absorbs the removed share.
+            let effective_bp = if i == last_before_removal || updated.len() == new_len - 1 {
+                bp + removed_bp
+            } else {
+                bp
+            };
+            updated.push_back((addr, effective_bp));
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Split(track_id.clone()), &updated);
+
+        events::emit_collaborator_removed(&env, track_id, &collaborator);
 
         Ok(())
     }
