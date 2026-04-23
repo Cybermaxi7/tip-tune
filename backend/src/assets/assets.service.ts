@@ -51,4 +51,21 @@ export class AssetsService {
       amount,
     );
   }
+
+  async resolveAsset(code: string): Promise<{ code: string; issuer: string | null }> {
+    if (code === 'XLM') return { code: 'XLM', issuer: null };
+    
+    const asset = await this.assetsRepository.findOne({
+      where: { assetCode: code, isEnabled: true },
+    });
+    
+    if (!asset) {
+      throw new NotFoundException(`Asset ${code} not supported in catalog`);
+    }
+    
+    return {
+      code: asset.assetCode,
+      issuer: asset.assetIssuer,
+    };
+  }
 }

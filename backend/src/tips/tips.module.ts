@@ -15,6 +15,7 @@ import { TracksModule } from "../tracks/tracks.module";
 import { TipReconciliationService } from "./tip-reconciliation.service";
 import { Track } from "@/tracks/entities/track.entity";
 import { TipReconciliationScheduler } from "./tip-reconciliation.scheduler";
+import { ReferralModule } from "../social-sharing/referral.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { TipReconciliationScheduler } from "./tip-reconciliation.scheduler";
     BlocksModule,
     // --- NEW ADDITION ---
     forwardRef(() => TracksModule),
+    ReferralModule,
   ],
   controllers: [TipsController],
   // --- NEW ADDITION: Added TipReconciliationService ---

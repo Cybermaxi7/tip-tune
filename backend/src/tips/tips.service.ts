@@ -23,6 +23,7 @@ import { FeesService } from "../fees/fees.service";
 import { ModerationService } from "../moderation/moderation.service";
 import { BlocksService } from "../blocks/blocks.service";
 import { TipReconciliationService } from "./tip-reconciliation.service";
+import { ReferralService } from "../social-sharing/referral.service";
 import { User } from "../users/entities/user.entity";
 
 // Make sure to define PaginatedResponseDto locally or import it from the correct path if it exists
@@ -63,6 +64,7 @@ export class TipsService {
     private readonly blocksService: BlocksService,
     @Inject(forwardRef(() => TipReconciliationService))
     private readonly tipReconciliationService: TipReconciliationService,
+    private readonly referralService: ReferralService,
   ) {}
 
   async create(userId: string, createTipDto: CreateTipDto): Promise<Tip> {
@@ -203,6 +205,17 @@ export class TipsService {
       "tip.verified",
       new TipVerifiedEvent(savedTip, userId),
     );
+
+    // Check for first-tip reward dispatch
+    const tipCount = await this.tipRepository.count({
+      where: { fromUserId: userId, status: TipStatus.VERIFIED },
+    });
+    if (tipCount === 1) {
+      this.logger.log(`User ${userId} sent their first tip. Triggering referral reward claim.`);
+      await this.referralService.claimReward(userId).catch(err => {
+        this.logger.error(`Failed to claim referral reward for user ${userId}: ${err.message}`);
+      });
+    }
 
     await this.notificationsService.create({
       userId: artistId,

@@ -5,11 +5,13 @@ import { VerificationController } from './verification.controller';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { Artist } from '../artists/entities/artist.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { StellarModule } from '../stellar/stellar.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([VerificationRequest, Artist]),
     NotificationsModule,
+    StellarModule,
   ],
   controllers: [VerificationController],
   providers: [VerificationService],
