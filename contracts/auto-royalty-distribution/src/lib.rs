@@ -4,6 +4,9 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
+mod storage;
+use storage::{get_track_owner, set_track_owner};
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -17,6 +20,7 @@ pub enum Error {
     Overflow = 7,
     Underflow = 8,
     AlreadySettled = 9,
+    Unauthorized = 10,
 }
 
 /// Represents a supported asset type
@@ -63,11 +67,22 @@ pub struct AutoRoyaltyDistribution;
 #[contractimpl]
 impl AutoRoyaltyDistribution {
     /// Set up collaborator splits for a track. Percentages are in basis points (10000 = 100%).
+    /// The caller becomes the track owner on first call; subsequent calls require the same owner.
     pub fn set_splits(
         env: Env,
+        owner: Address,
         track_id: String,
         collaborators: Vec<Collaborator>,
     ) -> Result<(), Error> {
+        owner.require_auth();
+
+        // If track already has an owner, verify the caller is that owner.
+        if let Some(existing_owner) = get_track_owner(&env, &track_id) {
+            if existing_owner != owner {
+                return Err(Error::Unauthorized);
+            }
+        }
+
         if collaborators.is_empty() {
             return Err(Error::NoCollaborators);
         }
@@ -83,6 +98,9 @@ impl AutoRoyaltyDistribution {
         if total > 10000 {
             return Err(Error::TotalExceeds10000);
         }
+
+        // Record this owner for future auth checks.
+        set_track_owner(&env, &track_id, &owner);
 
         env.storage()
             .persistent()

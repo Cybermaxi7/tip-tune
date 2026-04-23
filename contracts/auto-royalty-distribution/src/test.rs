@@ -6,10 +6,12 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 #[test]
 fn test_set_splits() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_001");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
     let collab2 = Address::generate(&env);
 
@@ -23,7 +25,7 @@ fn test_set_splits() {
         percentage: 4000, // 40%
     });
 
-    client.set_splits(&track_id, &collabs);
+    client.set_splits(&owner, &track_id, &collabs);
 
     let retrieved = client.get_splits(&track_id);
     assert_eq!(retrieved.len(), 2);
@@ -34,10 +36,12 @@ fn test_set_splits() {
 #[test]
 fn test_receive_and_distribute() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_dist");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
     let collab2 = Address::generate(&env);
 
@@ -51,7 +55,7 @@ fn test_receive_and_distribute() {
         percentage: 3000, // 30%
     });
 
-    client.set_splits(&track_id, &collabs);
+    client.set_splits(&owner, &track_id, &collabs);
     let payout_id = String::from_str(&env, "payout_001");
 
     let result = client.receive_and_distribute(&track_id, &payout_id, &1000, &Asset::Native);
@@ -64,10 +68,12 @@ fn test_receive_and_distribute() {
 #[test]
 fn test_rounding_no_loss() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_round");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
     let collab2 = Address::generate(&env);
     let collab3 = Address::generate(&env);
@@ -86,7 +92,7 @@ fn test_rounding_no_loss() {
         percentage: 3334, // 33.34%
     });
 
-    client.set_splits(&track_id, &collabs);
+    client.set_splits(&owner, &track_id, &collabs);
     let payout_id = String::from_str(&env, "payout_round");
 
     let result = client.receive_and_distribute(
@@ -108,10 +114,12 @@ fn test_rounding_no_loss() {
 #[test]
 fn test_multiple_assets() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_multi_asset");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
 
     let mut collabs = Vec::new(&env);
@@ -120,7 +128,7 @@ fn test_multiple_assets() {
         percentage: 10000, // 100%
     });
 
-    client.set_splits(&track_id, &collabs);
+    client.set_splits(&owner, &track_id, &collabs);
 
     // Test with Native asset
     let native_payout = String::from_str(&env, "payout_native");
@@ -139,11 +147,13 @@ fn test_multiple_assets() {
 #[test]
 fn test_batch_distribute() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track1 = String::from_str(&env, "track_batch1");
     let track2 = String::from_str(&env, "track_batch2");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
 
     let mut collabs = Vec::new(&env);
@@ -152,8 +162,8 @@ fn test_batch_distribute() {
         percentage: 10000,
     });
 
-    client.set_splits(&track1, &collabs);
-    client.set_splits(&track2, &collabs);
+    client.set_splits(&owner, &track1, &collabs);
+    client.set_splits(&owner, &track2, &collabs);
 
     let mut batch = Vec::new(&env);
     batch.push_back((
@@ -181,10 +191,12 @@ fn test_batch_distribute() {
 #[test]
 fn test_invalid_percentage() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_invalid");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
 
     let mut collabs = Vec::new(&env);
@@ -193,17 +205,19 @@ fn test_invalid_percentage() {
         percentage: 0, // Invalid: 0%
     });
 
-    let result = client.try_set_splits(&track_id, &collabs);
+    let result = client.try_set_splits(&owner, &track_id, &collabs);
     assert_eq!(result, Err(Ok(Error::InvalidPercentage)));
 }
 
 #[test]
 fn test_total_exceeds_100() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_over100");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
     let collab2 = Address::generate(&env);
 
@@ -217,7 +231,7 @@ fn test_total_exceeds_100() {
         percentage: 5000,
     });
 
-    let result = client.try_set_splits(&track_id, &collabs);
+    let result = client.try_set_splits(&owner, &track_id, &collabs);
     assert_eq!(result, Err(Ok(Error::TotalExceeds10000)));
 }
 
@@ -236,10 +250,12 @@ fn test_track_not_found() {
 #[test]
 fn test_invalid_amount() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_inv_amt");
+    let owner = Address::generate(&env);
     let collab1 = Address::generate(&env);
 
     let mut collabs = Vec::new(&env);
@@ -248,7 +264,7 @@ fn test_invalid_amount() {
         percentage: 10000,
     });
 
-    client.set_splits(&track_id, &collabs);
+    client.set_splits(&owner, &track_id, &collabs);
     let zero_payout = String::from_str(&env, "zero_payout");
     let negative_payout = String::from_str(&env, "negative_payout");
 
@@ -263,12 +279,40 @@ fn test_invalid_amount() {
 #[test]
 fn test_no_collaborators() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
     let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
 
     let track_id = String::from_str(&env, "track_empty");
+    let owner = Address::generate(&env);
     let collabs: Vec<Collaborator> = Vec::new(&env);
 
-    let result = client.try_set_splits(&track_id, &collabs);
+    let result = client.try_set_splits(&owner, &track_id, &collabs);
     assert_eq!(result, Err(Ok(Error::NoCollaborators)));
+}
+
+#[test]
+fn test_unauthorized_owner_update() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
+    let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "track_auth");
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let collab = Address::generate(&env);
+
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address: collab.clone(),
+        percentage: 10000,
+    });
+
+    // Owner sets splits first
+    client.set_splits(&owner, &track_id, &collabs);
+
+    // Attacker tries to update — must fail with Unauthorized
+    let result = client.try_set_splits(&attacker, &track_id, &collabs);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
