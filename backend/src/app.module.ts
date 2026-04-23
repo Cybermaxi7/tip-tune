@@ -21,6 +21,7 @@ import { GenresModule } from "./genres/genres.module";
 import { ActivitiesModule } from "./activities/activities.module";
 import { FollowsModule } from "./follows/follows.module";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { QueueModule } from "./queue/queue.module";
 import { GamificationModule } from "./gamification/gamification.module";
 import { ScheduledReleasesModule } from "./scheduled-releases/scheduled-releases.module";
 import { LeaderboardsModule } from "./leaderboards/leaderboards.module";
@@ -39,12 +40,24 @@ import { CustomThrottlerRedisStorage } from "./custom-throttler-storage-redis";
 import { VaryAcceptEncodingMiddleware } from "./common/middleware/vary-accept-encoding.middleware";
 import { AssetCatalogModule } from "./assets/asset-catalog.module";
 import { AssetsModule } from "./assets/assets.module";
+import { SubscriptionsModule } from "./subscription-tiers/subscriptions.module";
+import { PlayCountModule } from "./track-play-count/play-count.module";
+import { RecommendationsModule } from "./recommendations/recommendations.module";
+import { EmbedModule } from "./embed/embed.module";
+import { ReferralModule } from "./social-sharing/referral.module";
+import { PayoutsModule } from "./artiste-payout/payouts.module";
+import { CollaborationModule } from "./collaboration/collaboration.module";
+import { validate } from "./config/env.validation";
+import { AdminModule } from "./admin/admin.module";
+import { VerificationModule } from "./verification/verification.module";
+import { WaveformModule } from "./waveform/waveform.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ".env",
+      validate,
     }),
     // Rate Limiting with Redis backend
     ThrottlerModule.forRootAsync({
@@ -102,7 +115,10 @@ import { AssetsModule } from "./assets/assets.module";
     GamificationModule,
     EventEmitterModule.forRoot(),
     ScheduledReleasesModule,
+    // Queue module provides DLQ handling for exhausted jobs
+    QueueModule,
     LeaderboardsModule,
+    PlayCountModule,
     ReportsModule,
     FeesModule,
     ModerationModule,
@@ -113,6 +129,15 @@ import { AssetsModule } from "./assets/assets.module";
     VersionModule,
     ArtistStatusModule,
     WebSocketModule,
+    SubscriptionsModule,
+    RecommendationsModule,
+    EmbedModule,
+    ReferralModule,
+    PayoutsModule,
+    AdminModule,
+    VerificationModule,
+    CollaborationModule,
+    WaveformModule,
   ],
   controllers: [],
   providers: [

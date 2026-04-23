@@ -5,6 +5,7 @@ import { TipGoal, GoalStatus } from './entities/tip-goal.entity';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { ArtistsService } from '../artists/artists.service';
+import { GoalProgressService } from './goal-progress.service';
 
 @Injectable()
 export class GoalsService {
@@ -12,11 +13,12 @@ export class GoalsService {
     @InjectRepository(TipGoal)
     private readonly goalsRepository: Repository<TipGoal>,
     private readonly artistsService: ArtistsService,
+    private readonly goalProgressService: GoalProgressService,
   ) {}
 
   async create(createGoalDto: CreateGoalDto, userId: string): Promise<TipGoal> {
     const artist = await this.artistsService.findByUser(userId);
-    
+
     const goal = this.goalsRepository.create({
       ...createGoalDto,
       artistId: artist.id,
@@ -28,6 +30,12 @@ export class GoalsService {
     return this.goalsRepository.find({
       where: { artistId },
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findActiveGoals(): Promise<TipGoal[]> {
+    return this.goalsRepository.find({
+      where: { status: GoalStatus.ACTIVE },
     });
   }
 
@@ -47,9 +55,9 @@ export class GoalsService {
   async update(id: string, updateGoalDto: UpdateGoalDto, userId: string): Promise<TipGoal> {
     const goal = await this.findOne(id);
     const artist = await this.artistsService.findByUser(userId);
-    
+
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to update this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     Object.assign(goal, updateGoalDto);
@@ -59,18 +67,23 @@ export class GoalsService {
   async remove(id: string, userId: string): Promise<void> {
     const goal = await this.findOne(id);
     const artist = await this.artistsService.findByUser(userId);
-    
+
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to delete this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     await this.goalsRepository.remove(goal);
   }
 
+  /**
+   * Update goal progress (used by GoalProgressService)
+   * This method is kept for backward compatibility but progress updates
+   * should primarily happen through the GoalProgressService
+   */
   async updateProgress(id: string, amount: number): Promise<TipGoal> {
     const goal = await this.findOne(id);
     goal.currentAmount = Number(goal.currentAmount) + Number(amount);
-    
+
     if (goal.currentAmount >= goal.goalAmount && goal.status === GoalStatus.ACTIVE) {
       goal.status = GoalStatus.COMPLETED;
     }

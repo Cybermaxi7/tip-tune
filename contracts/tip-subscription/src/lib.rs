@@ -4,9 +4,7 @@ pub mod events;
 pub mod storage;
 pub mod types;
 
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, token, Address, Env, String,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String};
 use storage::{read_subscription, write_subscription};
 use types::{Error, Subscription, SubscriptionFrequency, SubscriptionStatus};
 
@@ -34,7 +32,7 @@ impl TipSubscriptionContract {
 
         let count_key = symbol_short!("sub_cnt");
         let count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
-        let next_count = count + 1;
+        let next_count = count.checked_add(1).ok_or(Error::Overflow)?;
         env.storage().instance().set(&count_key, &next_count);
 
         let mut buffer = [0u8; 10];
@@ -55,7 +53,9 @@ impl TipSubscriptionContract {
             SubscriptionFrequency::Weekly => WEEK_IN_SECONDS,
             SubscriptionFrequency::Monthly => MONTH_IN_SECONDS,
         };
-        let next_payment_timestamp = current_time + duration;
+        let next_payment_timestamp = current_time
+            .checked_add(duration)
+            .ok_or(Error::TimestampOverflow)?;
 
         let subscription = Subscription {
             id: sub_id.clone(),
@@ -76,7 +76,8 @@ impl TipSubscriptionContract {
     }
 
     pub fn process_payment(env: Env, subscription_id: String) -> Result<(), Error> {
-        let mut sub = read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
+        let mut sub =
+            read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
 
         if sub.status != SubscriptionStatus::Active {
             return Err(Error::InvalidStatus);
@@ -88,17 +89,15 @@ impl TipSubscriptionContract {
         }
 
         let token_client = token::Client::new(&env, &sub.token);
-        token_client.transfer(
-            &sub.subscriber,
-            &sub.artist,
-            &sub.amount,
-        );
+        token_client.transfer(&sub.subscriber, &sub.artist, &sub.amount);
 
         let duration = match sub.frequency {
             SubscriptionFrequency::Weekly => WEEK_IN_SECONDS,
             SubscriptionFrequency::Monthly => MONTH_IN_SECONDS,
         };
-        sub.next_payment_timestamp = current_time + duration;
+        sub.next_payment_timestamp = current_time
+            .checked_add(duration)
+            .ok_or(Error::TimestampOverflow)?;
 
         write_subscription(&env, &subscription_id, &sub);
 
@@ -108,7 +107,8 @@ impl TipSubscriptionContract {
     }
 
     pub fn cancel_subscription(env: Env, subscription_id: String) -> Result<(), Error> {
-        let mut sub = read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
+        let mut sub =
+            read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
         sub.subscriber.require_auth();
 
         // FIX: Prevent double-cancel
@@ -125,7 +125,8 @@ impl TipSubscriptionContract {
     }
 
     pub fn pause_subscription(env: Env, subscription_id: String) -> Result<(), Error> {
-        let mut sub = read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
+        let mut sub =
+            read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
         sub.subscriber.require_auth();
 
         // FIX: Require Active status before pausing
@@ -142,7 +143,8 @@ impl TipSubscriptionContract {
     }
 
     pub fn resume_subscription(env: Env, subscription_id: String) -> Result<(), Error> {
-        let mut sub = read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
+        let mut sub =
+            read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
         sub.subscriber.require_auth();
 
         if sub.status != SubscriptionStatus::Paused {

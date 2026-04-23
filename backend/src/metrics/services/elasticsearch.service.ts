@@ -54,6 +54,15 @@ export class ElasticsearchService {
     });
   }
 
+  async ping(): Promise<boolean> {
+    try {
+      const result = await this.client.ping();
+      return result !== false;
+    } catch {
+      return false;
+    }
+  }
+
   async getLogsByTimeRange(startTime: Date, endTime: Date) {
     return this.client.search({
       index: 'tiptune-logs',

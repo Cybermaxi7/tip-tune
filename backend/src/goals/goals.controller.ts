@@ -10,13 +10,18 @@ import {
   Request,
 } from '@nestjs/common';
 import { GoalsService } from './goals.service';
+import { GoalProgressService } from './goal-progress.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GoalOwnerGuard } from './guards/goal-owner.guard';
 
 @Controller('goals')
 export class GoalsController {
-  constructor(private readonly goalsService: GoalsService) {}
+  constructor(
+    private readonly goalsService: GoalsService,
+    private readonly goalProgressService: GoalProgressService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -34,8 +39,29 @@ export class GoalsController {
     return this.goalsService.findOne(id);
   }
 
+  @Get(':id/progress')
+  getProgressStats(@Param('id') id: string) {
+    return this.goalProgressService.getGoalProgressStats(id);
+  }
+
+  @Get(':id/progress-history')
+  getProgressHistory(@Param('id') id: string) {
+    return this.goalProgressService.getGoalProgressHistory(id);
+  }
+
+  @Get(':id/supporters')
+  getSupporterActivity(@Param('id') id: string) {
+    return this.goalProgressService.getSupporterActivitySummaries(id);
+  }
+
+  @Post(':id/snapshot')
+  @UseGuards(JwtAuthGuard, GoalOwnerGuard)
+  createManualSnapshot(@Param('id') id: string, @Request() req) {
+    return this.goalProgressService.createManualSnapshot(id);
+  }
+
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, GoalOwnerGuard)
   update(
     @Param('id') id: string,
     @Body() updateGoalDto: UpdateGoalDto,
@@ -45,7 +71,7 @@ export class GoalsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, GoalOwnerGuard)
   remove(@Param('id') id: string, @Request() req) {
     return this.goalsService.remove(id, req.user.userId);
   }

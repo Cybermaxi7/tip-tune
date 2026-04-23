@@ -33,6 +33,8 @@ pub enum BadgeType {
 pub struct BadgeMetadata {
     pub badge_id: String,
     pub badge_type: BadgeType,
+    pub name: String,
+    pub description: String,
     pub owner: Address,
     pub minted_at: u64,
 }
@@ -81,18 +83,8 @@ impl TipNftBadgeContract {
     }
 
     /// Record a tip for a user (called by escrow/verification contract)
-    /// Updates stats for badge eligibility
     pub fn record_tip(env: Env, user: Address, amount: i128, is_genre_tip: bool) {
-        let mut stats: UserStats = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserStats(user.clone()))
-            .unwrap_or(UserStats {
-                tip_count: 0,
-                total_amount: 0,
-                first_tip_time: 0,
-                genre_tips: 0,
-            });
+        let mut stats: UserStats = Self::get_user_stats(env.clone(), user.clone());
 
         stats.tip_count += 1;
         stats.total_amount += amount;
@@ -112,7 +104,6 @@ impl TipNftBadgeContract {
 
     /// Check if a user is eligible for a specific badge type
     pub fn check_badge_eligibility(env: Env, user: Address, badge_type: BadgeType) -> bool {
-        // If already minted, not eligible again
         let badge_ordinal = Self::badge_type_ordinal(&badge_type);
         if env
             .storage()
@@ -122,16 +113,7 @@ impl TipNftBadgeContract {
             return false;
         }
 
-        let stats: UserStats = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserStats(user))
-            .unwrap_or(UserStats {
-                tip_count: 0,
-                total_amount: 0,
-                first_tip_time: 0,
-                genre_tips: 0,
-            });
+        let stats = Self::get_user_stats(env.clone(), user);
 
         match badge_type {
             BadgeType::FirstTip => stats.tip_count >= 1,
@@ -157,12 +139,30 @@ impl TipNftBadgeContract {
         }
     }
 
-    /// Mint a badge NFT for a user. Returns the badge/NFT ID.
-    /// Prevents duplicate minting for the same badge type.
+    /// Check eligibility for all badge types at once
+    pub fn get_all_eligibility(env: Env, user: Address) -> Vec<(BadgeType, bool)> {
+        let mut results = Vec::new(&env);
+        let types = [
+            BadgeType::FirstTip,
+            BadgeType::TenTips,
+            BadgeType::HundredTips,
+            BadgeType::WhaleTipper,
+            BadgeType::EarlySupporter,
+            BadgeType::GenreSupporter,
+        ];
+        for t in types {
+            results.push_back((
+                t,
+                Self::check_badge_eligibility(env.clone(), user.clone(), t),
+            ));
+        }
+        results
+    }
+
+    /// Mint a badge NFT for a user.
     pub fn mint_badge(env: Env, user: Address, badge_type: BadgeType) -> Result<String, Error> {
         let badge_ordinal = Self::badge_type_ordinal(&badge_type);
 
-        // Check for duplicate minting
         if env
             .storage()
             .persistent()
@@ -172,11 +172,10 @@ impl TipNftBadgeContract {
         }
 
         // Check eligibility
-        if !Self::check_badge_eligibility(env.clone(), user.clone(), badge_type.clone()) {
+        if !Self::check_badge_eligibility(env.clone(), user.clone(), badge_type) {
             return Err(Error::NotEligible);
         }
 
-        // Generate badge ID
         let mut total: u64 = env
             .storage()
             .instance()
@@ -198,26 +197,24 @@ impl TipNftBadgeContract {
                 n /= 10;
             }
         }
-        let badge_id = String::from_slice(&env, &buf[i..]);
+        let badge_id = String::from_bytes(&env, &buf[i..]);
 
         let metadata = BadgeMetadata {
             badge_id: badge_id.clone(),
-            badge_type: badge_type.clone(),
+            badge_type,
+            name: Self::badge_name(&env, badge_type),
+            description: Self::badge_description(&env, badge_type),
             owner: user.clone(),
             minted_at: env.ledger().timestamp(),
         };
 
-        // Mark badge as minted to prevent duplicates
         env.storage()
             .persistent()
             .set(&DataKey::BadgeMinted(user.clone(), badge_ordinal), &true);
-
-        // Store badge record
         env.storage()
             .persistent()
             .set(&DataKey::BadgeRecord(badge_id.clone()), &metadata);
 
-        // Add to user's badge list
         let mut user_badges: Vec<String> = env
             .storage()
             .persistent()
@@ -228,7 +225,6 @@ impl TipNftBadgeContract {
             .persistent()
             .set(&DataKey::UserBadges(user.clone()), &user_badges);
 
-        // Emit minting event
         env.events()
             .publish((symbol_short!("badge"), symbol_short!("minted")), metadata);
 
@@ -241,6 +237,18 @@ impl TipNftBadgeContract {
             .persistent()
             .get(&DataKey::UserBadges(user))
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Get all badge metadata for a user (efficient lookup)
+    pub fn get_user_badges_full(env: Env, user: Address) -> Vec<BadgeMetadata> {
+        let ids = Self::get_user_badges(env.clone(), user);
+        let mut full_badges = Vec::new(&env);
+        for id in ids {
+            if let Some(meta) = Self::get_badge(env.clone(), id) {
+                full_badges.push_back(meta);
+            }
+        }
+        full_badges
     }
 
     /// Get badge metadata by ID
@@ -271,7 +279,6 @@ impl TipNftBadgeContract {
             .unwrap_or(0)
     }
 
-    // Helper function to get ordinal for BadgeType
     fn badge_type_ordinal(badge_type: &BadgeType) -> u32 {
         match badge_type {
             BadgeType::FirstTip => 0,
@@ -280,6 +287,39 @@ impl TipNftBadgeContract {
             BadgeType::WhaleTipper => 3,
             BadgeType::EarlySupporter => 4,
             BadgeType::GenreSupporter => 5,
+        }
+    }
+
+    fn badge_name(env: &Env, badge_type: BadgeType) -> String {
+        match badge_type {
+            BadgeType::FirstTip => String::from_str(env, "First Tip"),
+            BadgeType::TenTips => String::from_str(env, "Ten Tips"),
+            BadgeType::HundredTips => String::from_str(env, "Hundred Tips"),
+            BadgeType::WhaleTipper => String::from_str(env, "Whale Tipper"),
+            BadgeType::EarlySupporter => String::from_str(env, "Early Supporter"),
+            BadgeType::GenreSupporter => String::from_str(env, "Genre Supporter"),
+        }
+    }
+
+    fn badge_description(env: &Env, badge_type: BadgeType) -> String {
+        match badge_type {
+            BadgeType::FirstTip => {
+                String::from_str(env, "Awarded for sending the first recorded tip.")
+            }
+            BadgeType::TenTips => String::from_str(env, "Awarded after ten recorded tips."),
+            BadgeType::HundredTips => {
+                String::from_str(env, "Awarded after one hundred recorded tips.")
+            }
+            BadgeType::WhaleTipper => {
+                String::from_str(env, "Awarded for crossing the whale tipping threshold.")
+            }
+            BadgeType::EarlySupporter => String::from_str(
+                env,
+                "Awarded for tipping before the early supporter cutoff.",
+            ),
+            BadgeType::GenreSupporter => {
+                String::from_str(env, "Awarded for five or more genre-specific tips.")
+            }
         }
     }
 }
