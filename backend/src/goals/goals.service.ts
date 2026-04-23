@@ -33,6 +33,12 @@ export class GoalsService {
     });
   }
 
+  async findActiveGoals(): Promise<TipGoal[]> {
+    return this.goalsRepository.find({
+      where: { status: GoalStatus.ACTIVE },
+    });
+  }
+
   async findOne(id: string): Promise<TipGoal> {
     const goal = await this.goalsRepository.findOne({
       where: { id },
@@ -51,7 +57,7 @@ export class GoalsService {
     const artist = await this.artistsService.findByUser(userId);
 
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to update this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     Object.assign(goal, updateGoalDto);
@@ -63,7 +69,7 @@ export class GoalsService {
     const artist = await this.artistsService.findByUser(userId);
 
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to delete this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     await this.goalsRepository.remove(goal);
