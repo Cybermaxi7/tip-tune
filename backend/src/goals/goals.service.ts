@@ -51,7 +51,7 @@ export class GoalsService {
     const artist = await this.artistsService.findByUser(userId);
 
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to update this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     Object.assign(goal, updateGoalDto);
@@ -63,7 +63,7 @@ export class GoalsService {
     const artist = await this.artistsService.findByUser(userId);
 
     if (goal.artistId !== artist.id) {
-      throw new ForbiddenException(`You are not authorized to delete this goal`);
+      throw new ForbiddenException('You do not have permission to modify this goal');
     }
 
     await this.goalsRepository.remove(goal);
