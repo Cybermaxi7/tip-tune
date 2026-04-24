@@ -1,9 +1,9 @@
 /// <reference types="vitest/globals" />
-import { render, waitFor } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 import { screen } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
+import { renderWithProviders } from '../../renderWithProviders';
 import ExplorePage from '../ExplorePage';
 
 // Mock the explore service
@@ -102,11 +102,10 @@ vi.mock('../../services/exploreService', () => ({
 
 describe('ExplorePage', () => {
     const renderPage = () =>
-        render(
-            <MemoryRouter>
-                <ExplorePage />
-            </MemoryRouter>,
-        );
+        renderWithProviders(<ExplorePage />, {
+            route: '/explore',
+            path: '/explore',
+        });
 
     it('renders the page heading', async () => {
         renderPage();

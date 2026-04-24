@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderWithProviders } from '../../renderWithProviders';
 import ArtistProfilePage from '../ArtistProfilePage';
 
 vi.mock('@/services/artistService', async () => {
@@ -61,13 +61,10 @@ beforeEach(() => {
 });
 
 function renderWithRoute(path = '/artists/dj-melodica') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/artists/:artistId" element={<ArtistProfilePage />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+  return renderWithProviders(<ArtistProfilePage />, {
+    route: path,
+    path: '/artists/:artistId',
+  });
 }
 
 describe('ArtistProfilePage', () => {

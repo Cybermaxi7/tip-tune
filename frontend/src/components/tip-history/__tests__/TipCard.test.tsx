@@ -1,14 +1,13 @@
-import { render } from '@testing-library/react';
 import { screen } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
-import { MemoryRouter } from 'react-router-dom';
+import { renderWithProviders } from '../../../renderWithProviders';
 import TipCard from '../TipCard';
 import type { TipHistoryItem } from '../../../types';
 
 /** Wrap component in MemoryRouter since TipCard uses <Link> */
 const renderWithRouter = (ui: React.ReactElement) =>
-  render(<MemoryRouter>{ui}</MemoryRouter>);
+  renderWithProviders(ui, { route: '/' });
 
 const baseTip: TipHistoryItem = {
   id: 'tip-1',

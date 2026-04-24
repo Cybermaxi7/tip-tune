@@ -1,8 +1,8 @@
-import { render, waitFor, within } from '@testing-library/react';
+import { waitFor, within } from '@testing-library/react';
 import { screen } from '@testing-library/dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { renderWithProviders } from '../../renderWithProviders';
 import TipReceiptPage from '../TipReceiptPage';
 import { tipService } from '../../services/tipService';
 import type { TipReceipt } from '../../types';
@@ -49,13 +49,10 @@ const minimalReceipt = {
 /* ------------------------------------------------------------------ */
 
 function renderPage(tipId = 'minimal-id') {
-  return render(
-    <MemoryRouter initialEntries={[`/tips/${tipId}/receipt`]}>
-      <Routes>
-        <Route path="/tips/:tipId/receipt" element={<TipReceiptPage />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+  return renderWithProviders(<TipReceiptPage />, {
+    route: `/tips/${tipId}/receipt`,
+    path: '/tips/:tipId/receipt',
+  });
 }
 
 /* ------------------------------------------------------------------ */

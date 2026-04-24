@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { screen, fireEvent } from '@testing-library/dom';
+import { screen, within } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
@@ -54,6 +54,7 @@ describe('SearchBar', () => {
   });
 
   it('shows suggestions when query length >= 2', async () => {
+    const user = userEvent.setup();
     render(
       <SearchBar
         query="te"
@@ -67,10 +68,13 @@ describe('SearchBar', () => {
     );
     
     const input = screen.getByRole('searchbox');
-    fireEvent.focus(input);
+    await user.click(input);
     
-    expect(screen.getByText('Artist One')).toBeInTheDocument();
-    expect(screen.getByText('Track Two')).toBeInTheDocument();
+    const listbox = await screen.findByRole('listbox');
+    const options = within(listbox).getAllByRole('option');
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveTextContent('Artist One');
+    expect(options[1]).toHaveTextContent('Track Two');
   });
 
   it('calls onSelectSuggestion when clicking a suggestion', async () => {
@@ -88,9 +92,10 @@ describe('SearchBar', () => {
     );
 
     const input = screen.getByRole('searchbox');
-    fireEvent.focus(input);
+    await user.click(input);
     
-    await user.click(screen.getByText('Artist One'));
+    const listbox = await screen.findByRole('listbox');
+    await user.click(within(listbox).getAllByRole('option')[0]);
     expect(mockOnSelectSuggestion).toHaveBeenCalledWith(suggestions[0]);
     expect(mockOnQueryChange).toHaveBeenCalledWith('Artist One');
   });

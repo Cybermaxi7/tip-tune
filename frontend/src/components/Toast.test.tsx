@@ -7,16 +7,20 @@ vi.mock('../utils/animationUtils', () => ({
     useReducedMotion: vi.fn(() => false),
 }));
 
-// rAF stub
 let rafCallback: FrameRequestCallback | null = null;
+
 beforeEach(() => {
+    vi.useFakeTimers();
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
         rafCallback = cb;
         return 1;
     });
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => { });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 });
+
 afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     rafCallback = null;
 });
@@ -51,7 +55,9 @@ describe('Toast', () => {
     it('calls onClose when close button clicked', () => {
         render(<Toast {...baseProps} />);
         fireEvent.click(screen.getByRole('button', { name: /close notification/i }));
-        // Allow exit animation delay (reducedMotion=false, delay=300ms — stub with 0 for test)
+        act(() => {
+            vi.advanceTimersByTime(300);
+        });
         expect(baseProps.onClose).toHaveBeenCalledWith('toast-1');
     });
 
@@ -72,12 +78,14 @@ describe('Toast', () => {
 
     it('calls onClose after duration via rAF', () => {
         render(<Toast {...baseProps} duration={100} />);
-        // Advance rAF past 100ms
         act(() => {
             if (rafCallback) {
-                rafCallback(0);      // first tick (start time = 0)
-                rafCallback(200);    // 200ms elapsed > 100ms duration → dismiss
+                rafCallback(0);
+                rafCallback(200);
             }
+        });
+        act(() => {
+            vi.advanceTimersByTime(300);
         });
         expect(baseProps.onClose).toHaveBeenCalledWith('toast-1');
     });

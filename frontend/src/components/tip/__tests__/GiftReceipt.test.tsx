@@ -1,9 +1,9 @@
 /**
  * Tests for GiftReceipt component
  */
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { screen, waitFor } from '@testing-library/react';
 import GiftReceipt from '../GiftReceipt';
+import { renderWithProviders } from '../../../renderWithProviders';
 
 // Mock useNavigate
 const mockNavigate = jest.fn();
@@ -13,13 +13,10 @@ jest.mock('react-router-dom', () => ({
 }));
 
 function renderWithRouter(giftId = 'gift-test-1') {
-  return render(
-    <MemoryRouter initialEntries={[`/gifts/${giftId}`]}>
-      <Routes>
-        <Route path="/gifts/:giftId" element={<GiftReceipt />} />
-      </Routes>
-    </MemoryRouter>
-  );
+  return renderWithProviders(<GiftReceipt />, {
+    route: `/gifts/${giftId}`,
+    path: '/gifts/:giftId',
+  });
 }
 
 describe('GiftReceipt', () => {
