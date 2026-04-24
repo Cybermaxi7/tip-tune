@@ -1,6 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use crate::errors::Error;
+
+pub mod errors;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,18 +63,18 @@ impl RewardToken {
     /// * `admin` - The admin address with administrative privileges
     /// * `total_supply` - Initial total supply (all minted to admin)
     /// * `supply_cap` - Maximum allowed total supply (None for unlimited, Some for capped)
-    pub fn initialize(env: Env, admin: Address, total_supply: i128, supply_cap: Option<i128>) {
+    pub fn initialize(env: Env, admin: Address, total_supply: i128, supply_cap: Option<i128>) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Already initialized");
+            return Err(Error::AlreadyInitialized);
         }
         if total_supply < 0 {
-            panic!("Total supply cannot be negative");
+            return Err(Error::NegativeSupply);
         }
 
         // Validate supply cap if provided
         if let Some(cap) = supply_cap {
             if cap < total_supply {
-                panic!("Supply cap cannot be less than initial supply");
+                return Err(Error::CapBelowSupply);
             }
         }
 
@@ -88,30 +91,32 @@ impl RewardToken {
         env.storage()
             .persistent()
             .set(&DataKey::Balance(admin.clone()), &total_supply);
+
+        Ok(())
     }
 
     /// Transfer tokens from one account to another.
     /// Requires authorization from the sender.
     /// Not allowed when contract is paused.
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
 
         // Check if contract is paused
         if Self::is_paused(env.clone()) {
-            panic!("Contract is paused");
+            return Err(Error::Paused);
         }
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         if from == to {
-            panic!("Cannot transfer to self");
+            return Err(Error::SelfTransfer);
         }
 
         let from_balance = Self::balance(env.clone(), from.clone());
         if from_balance < amount {
-            panic!("Insufficient balance");
+            return Err(Error::InsufficientBalance);
         }
 
         env.storage()
@@ -133,6 +138,8 @@ impl RewardToken {
                 amount,
             },
         );
+
+        Ok(())
     }
 
     /// Get the balance of an account.
@@ -147,17 +154,17 @@ impl RewardToken {
     /// Only the admin can call this.
     /// Not allowed when contract is paused.
     /// Respects supply cap if configured.
-    pub fn mint_reward(env: Env, recipient: Address, amount: i128) {
+    pub fn mint_reward(env: Env, recipient: Address, amount: i128) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         // Check if contract is paused
         if Self::is_paused(env.clone()) {
-            panic!("Cannot mint while paused");
+            return Err(Error::Paused);
         }
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         let current_supply: i128 = env
@@ -168,22 +175,22 @@ impl RewardToken {
 
         // Check supply cap if configured
         if let Some(cap_entry) = env.storage().instance().get::<_, i128>(&DataKey::SupplyCap) {
-            let new_supply = current_supply.checked_add(amount).expect("Supply overflow");
+            let new_supply = current_supply.checked_add(amount).ok_or(Error::SupplyOverflow)?;
             if new_supply > cap_entry {
-                panic!("Minting would exceed supply cap");
+                return Err(Error::SupplyCapExceeded);
             }
         }
 
         let recipient_balance = Self::balance(env.clone(), recipient.clone());
         let new_recipient_balance = recipient_balance
             .checked_add(amount)
-            .expect("Balance overflow");
+            .ok_or(Error::BalanceOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(recipient.clone()), &new_recipient_balance);
 
         // Update total supply
-        let new_supply = current_supply.checked_add(amount).expect("Supply overflow");
+        let new_supply = current_supply.checked_add(amount).ok_or(Error::SupplyOverflow)?;
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_supply);
@@ -196,20 +203,22 @@ impl RewardToken {
                 amount,
             },
         );
+
+        Ok(())
     }
 
     /// Burn tokens from an account.
     /// Requires authorization from the token holder.
-    pub fn burn(env: Env, from: Address, amount: i128) {
+    pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         let from_balance = Self::balance(env.clone(), from.clone());
         if from_balance < amount {
-            panic!("Insufficient balance");
+            return Err(Error::InsufficientBalance);
         }
 
         env.storage()
@@ -222,7 +231,7 @@ impl RewardToken {
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
-        let new_supply = total_supply.checked_sub(amount).expect("Supply underflow");
+        let new_supply = total_supply.checked_sub(amount).ok_or(Error::SupplyUnderflow)?;
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_supply);
@@ -235,23 +244,27 @@ impl RewardToken {
                 amount,
             },
         );
+
+        Ok(())
     }
 
     /// Approve a spender to transfer tokens on behalf of the token holder.
-    pub fn approve(env: Env, from: Address, spender: Address, amount: i128) {
+    pub fn approve(env: Env, from: Address, spender: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
 
         if amount < 0 {
-            panic!("Amount cannot be negative");
+            return Err(Error::NegativeAllowance);
         }
 
         if from == spender {
-            panic!("Cannot approve self");
+            return Err(Error::SelfApprove);
         }
 
         env.storage()
             .persistent()
             .set(&DataKey::Allowance(from, spender), &amount);
+
+        Ok(())
     }
 
     /// Get the allowance of a spender for a token holder.
@@ -266,46 +279,46 @@ impl RewardToken {
     /// Requires authorization from the spender.
     /// Decreases the allowance accordingly.
     /// Not allowed when contract is paused.
-    pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
+    pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) -> Result<(), Error> {
         spender.require_auth();
 
         // Check if contract is paused
         if Self::is_paused(env.clone()) {
-            panic!("Contract is paused");
+            return Err(Error::Paused);
         }
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         if from == to {
-            panic!("Cannot transfer to self");
+            return Err(Error::SelfTransfer);
         }
 
         let allowance = Self::allowance(env.clone(), from.clone(), spender.clone());
         if allowance < amount {
-            panic!("Insufficient allowance");
+            return Err(Error::InsufficientAllowance);
         }
 
         let from_balance = Self::balance(env.clone(), from.clone());
         if from_balance < amount {
-            panic!("Insufficient balance");
+            return Err(Error::InsufficientBalance);
         }
 
         // Update allowance
-        let new_allowance = allowance.checked_sub(amount).expect("Allowance underflow");
+        let new_allowance = allowance.checked_sub(amount).ok_or(Error::AllowanceUnderflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Allowance(from.clone(), spender), &new_allowance);
 
         // Update balances
-        let new_from_balance = from_balance.checked_sub(amount).expect("Balance underflow");
+        let new_from_balance = from_balance.checked_sub(amount).ok_or(Error::InsufficientBalance)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(from.clone()), &new_from_balance);
 
         let to_balance = Self::balance(env.clone(), to.clone());
-        let new_to_balance = to_balance.checked_add(amount).expect("Balance overflow");
+        let new_to_balance = to_balance.checked_add(amount).ok_or(Error::BalanceOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(to.clone()), &new_to_balance);
@@ -319,26 +332,28 @@ impl RewardToken {
                 amount,
             },
         );
+
+        Ok(())
     }
 
     /// Admin transfer: Move tokens between accounts without balance limit.
     /// Only the admin can call this.
     /// Useful for corrections and operational needs.
-    pub fn admin_transfer(env: Env, from: Address, to: Address, amount: i128) {
+    pub fn admin_transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         if from == to {
-            panic!("Cannot transfer to self");
+            return Err(Error::SelfTransfer);
         }
 
         let from_balance = Self::balance(env.clone(), from.clone());
         if from_balance < amount {
-            panic!("Insufficient balance");
+            return Err(Error::InsufficientBalance);
         }
 
         env.storage()
@@ -346,7 +361,7 @@ impl RewardToken {
             .set(&DataKey::Balance(from.clone()), &(from_balance - amount));
 
         let to_balance = Self::balance(env.clone(), to.clone());
-        let new_to_balance = to_balance.checked_add(amount).expect("Balance overflow");
+        let new_to_balance = to_balance.checked_add(amount).ok_or(Error::BalanceOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(to.clone()), &new_to_balance);
@@ -360,6 +375,8 @@ impl RewardToken {
                 amount,
             },
         );
+
+        Ok(())
     }
 
     /// Get the current total supply.

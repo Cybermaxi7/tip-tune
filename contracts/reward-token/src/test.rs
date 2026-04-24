@@ -19,7 +19,7 @@ fn test_basic_operations() {
 
     // Initialize without supply cap
     env.mock_all_auths();
-    client.initialize(&admin, &1000, &None);
+    assert!(client.try_initialize(&admin, &1000, &None).is_ok());
 
     assert_eq!(client.balance(&admin), 1000);
     assert_eq!(client.balance(&user1), 0);
@@ -29,32 +29,32 @@ fn test_basic_operations() {
     assert_eq!(client.is_paused(), false);
 
     // Transfer by admin
-    client.transfer(&admin, &user1, &100);
+    assert!(client.try_transfer(&admin, &user1, &100).is_ok());
     assert_eq!(client.balance(&admin), 900);
     assert_eq!(client.balance(&user1), 100);
     assert_eq!(client.total_supply(), 1000);
 
     // Transfer by user
-    client.transfer(&user1, &user2, &50);
+    assert!(client.try_transfer(&user1, &user2, &50).is_ok());
     assert_eq!(client.balance(&user1), 50);
     assert_eq!(client.balance(&user2), 50);
     assert_eq!(client.total_supply(), 1000);
 
     // Mint reward
-    client.mint_reward(&user1, &200);
+    assert!(client.try_mint_reward(&user1, &200).is_ok());
     assert_eq!(client.balance(&user1), 250);
     assert_eq!(client.total_supply(), 1200);
 
     // Burn
-    client.burn(&user1, &50);
+    assert!(client.try_burn(&user1, &50).is_ok());
     assert_eq!(client.balance(&user1), 200);
     assert_eq!(client.total_supply(), 1150);
 
     // Approve and TransferFrom
-    client.approve(&user1, &user2, &100);
+    assert!(client.try_approve(&user1, &user2, &100).is_ok());
     assert_eq!(client.allowance(&user1, &user2), 100);
 
-    client.transfer_from(&user2, &user1, &admin, &50);
+    assert!(client.try_transfer_from(&user2, &user1, &admin, &50).is_ok());
     assert_eq!(client.balance(&user1), 150);
     assert_eq!(client.balance(&admin), 950);
     assert_eq!(client.allowance(&user1, &user2), 50);
@@ -72,19 +72,18 @@ fn test_supply_cap() {
     env.mock_all_auths();
 
     // Initialize with supply cap
-    client.initialize(&admin, &1000, &Some(2000));
+    assert!(client.try_initialize(&admin, &1000, &Some(2000)).is_ok());
     assert_eq!(client.supply_cap(), Some(2000));
     assert_eq!(client.total_supply(), 1000);
 
     // Should be able to mint up to the cap
-    client.mint_reward(&user1, &900);
+    assert!(client.try_mint_reward(&user1, &900).is_ok());
     assert_eq!(client.balance(&user1), 900);
     assert_eq!(client.total_supply(), 1900);
 }
 
 #[test]
-#[should_panic]
-fn test_supply_cap_panics_when_exceeded() {
+fn test_supply_cap_fails_when_exceeded() {
     let env = Env::default();
     let client = register_client(&env);
 
@@ -92,10 +91,12 @@ fn test_supply_cap_panics_when_exceeded() {
     let user1 = Address::generate(&env);
 
     env.mock_all_auths();
-    client.initialize(&admin, &1000, &Some(2000));
-    client.mint_reward(&user1, &900);
+    assert!(client.try_initialize(&admin, &1000, &Some(2000)).is_ok());
+    assert!(client.try_mint_reward(&user1, &900).is_ok());
 
-    client.mint_reward(&user1, &200);
+    // This should fail with SupplyCapExceeded error
+    let result = client.try_mint_reward(&user1, &200);
+    assert!(result.is_err());
 }
 
 #[test]
