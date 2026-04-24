@@ -6,7 +6,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { animated, useSpring, useTrail } from 'react-spring';
 import { X, Gift } from 'lucide-react';
-import { useVirtualKeyboard, useHaptic } from '../../hooks';
+import { useVirtualKeyboard, useHaptic, useModalA11y } from '../../hooks';
 import { useReducedMotion, getSpringConfig } from '../../utils/animationUtils';
 import { getSafeAreaInsets, setupSafeAreaInsets } from '../../utils/gestures';
 import AmountSelector from './AmountSelector';
@@ -47,6 +47,7 @@ const TipModal: React.FC<TipModalProps> = ({
     const haptic = useHaptic();
     const safeAreaRef = useRef<HTMLDivElement>(null);
     const sheetRef = useRef<HTMLDivElement>(null);
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
     const keyboardHeight = useVirtualKeyboard();
 
     // State
@@ -77,65 +78,12 @@ const TipModal: React.FC<TipModalProps> = ({
         setupSafeAreaInsets();
     }, []);
 
-    // Close modal with escape key
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                handleClose();
-            }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = 'hidden';
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = 'unset';
-        };
-    }, [handleClose, isOpen]);
-
-    // Focus trap implementation
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const handleFocusTrap = (e: KeyboardEvent) => {
-            if (e.key !== 'Tab') return;
-
-            const focusableElements = sheetRef.current?.querySelectorAll(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            );
-            
-            if (!focusableElements || focusableElements.length === 0) return;
-
-            const firstElement = focusableElements[0] as HTMLElement;
-            const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-
-            if (e.shiftKey) {
-                if (document.activeElement === firstElement) {
-                    lastElement.focus();
-                    e.preventDefault();
-                }
-            } else {
-                if (document.activeElement === lastElement) {
-                    firstElement.focus();
-                    e.preventDefault();
-                }
-            }
-        };
-
-        document.addEventListener('keydown', handleFocusTrap);
-        // Set initial focus to the amount selector or close button
-        setTimeout(() => {
-            const firstButton = sheetRef.current?.querySelector('button');
-            if (firstButton) (firstButton as HTMLElement).focus();
-        }, 100);
-
-        return () => {
-            document.removeEventListener('keydown', handleFocusTrap);
-        };
-    }, [isOpen]);
+    useModalA11y({
+        isOpen,
+        containerRef: sheetRef,
+        initialFocusRef: closeButtonRef,
+        onClose: handleClose,
+    });
 
     const handleAmountChange = useCallback((amount: number) => {
         setTipAmount(amount);
@@ -270,6 +218,7 @@ const TipModal: React.FC<TipModalProps> = ({
                         </div>
                     </div>
                     <button
+                        ref={closeButtonRef}
                         onClick={handleClose}
                         className="p-2 hover:bg-navy/50 rounded-lg transition-colors"
                         aria-label="Close tip modal"
