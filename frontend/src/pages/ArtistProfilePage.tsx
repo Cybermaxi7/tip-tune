@@ -9,8 +9,8 @@ import { fetchArtistProfilePage, followArtist, unfollowArtist } from '@/services
 import { ArtistProfilePageData } from '@/types';
 import SongRequestModal from '@/components/requests/SongRequestModal';
 import RequestQueue from '@/components/requests/RequestQueue';
-import type { SongRequest } from '@/components/requests/types';
 import RequestNotification from '@/components/requests/RequestNotification';
+import { createRequestStore, useRequestStore } from '@/components/requests/requestStore';
 import {
   ComboCounter,
   ComboTimer,
@@ -33,8 +33,6 @@ const ArtistProfilePage: React.FC = () => {
   const [isFollowPending, setIsFollowPending] = useState(false);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const [requests, setRequests] = useState<SongRequest[]>([]);
-  const [notification, setNotification] = useState<string | null>(null);
   const [artistAccent, setArtistAccent] = useState<string>('#6366f1');
   const combo = useTipCombo({ windowMs: 30_000 });
 
@@ -57,6 +55,15 @@ const ArtistProfilePage: React.FC = () => {
     () => buildArtistThemeVariables(profileData?.artist.id, artistAccent),
     [profileData?.artist.id, artistAccent],
   );
+  const requestStore = useMemo(
+    () =>
+      createRequestStore({
+        artistId,
+        tracks: profileData?.tracks ?? [],
+      }),
+    [artistId, profileData?.tracks],
+  );
+  const requestState = useRequestStore(requestStore);
 
   useEffect(() => {
     loadArtist();
@@ -105,72 +112,34 @@ const ArtistProfilePage: React.FC = () => {
   };
 
   const handleCreateRequest = async ({
-    trackId,
     tipAmount,
-    assetCode,
-    message,
+    ...values
   }: {
     trackId: string;
     tipAmount: number;
     assetCode: 'XLM' | 'USDC';
     message?: string;
   }) => {
-    if (!profileData) return;
-
-    // Simple duplicate prevention: only one pending request per track from same fan name placeholder
-    const fanName = 'You';
-    const hasDuplicate = requests.some(
-      (r) =>
-        r.trackId === trackId &&
-        r.fanName === fanName &&
-        r.status === 'pending'
-    );
-    if (hasDuplicate) {
-      setNotification('You have already requested this track. Please wait for the artist.');
-      return;
-    }
-
-    const track = profileData.tracks.find((t) => t.id === trackId);
-    if (!track) return;
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour
-
-    const newRequest: SongRequest = {
-      id: `req_${Date.now()}`,
-      trackId,
-      trackTitle: track.title,
+    const wasCreated = await requestStore.enqueue({
+      ...values,
       tipAmount,
-      assetCode,
-      fanName,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      status: 'pending',
-      message,
-    };
-
-    setRequests((prev) => [newRequest, ...prev]);
-    combo.registerTip(tipAmount);
-    setNotification('Song request sent! Higher tips move you up the queue.');
+    });
+    if (wasCreated) {
+      combo.registerTip(tipAmount);
+    }
+    return wasCreated;
   };
 
   const handleAcceptRequest = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'accepted' } : r))
-    );
+    void requestStore.updateStatus(id, 'accepted');
   };
 
   const handleDeclineRequest = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'declined' } : r))
-    );
+    void requestStore.updateStatus(id, 'declined');
   };
 
   const handlePlayRequest = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'played' } : r))
-    );
-    setNotification('Fan has been notified that their request was played.');
+    void requestStore.updateStatus(id, 'played');
   };
 
   if (isLoading) {
@@ -298,12 +267,24 @@ const ArtistProfilePage: React.FC = () => {
               remainingMs={combo.timeRemainingMs}
             />
             <OnFireAnimation active={combo.isOnFire} />
-            {notification && (
-              <RequestNotification message={notification} type="info" />
+            {requestState.notification && (
+              <button
+                type="button"
+                onClick={requestStore.dismissNotification}
+                className="w-full text-left"
+              >
+                <RequestNotification
+                  message={requestState.notification.message}
+                  type={requestState.notification.type}
+                />
+              </button>
             )}
             <div className="mt-2">
               <RequestQueue
-                requests={requests}
+                requests={requestState.visibleRequests}
+                filter={requestState.filter}
+                counts={requestState.counts}
+                onFilterChange={requestStore.setFilter}
                 onAccept={handleAcceptRequest}
                 onDecline={handleDeclineRequest}
                 onPlay={handlePlayRequest}
@@ -347,6 +328,7 @@ const ArtistProfilePage: React.FC = () => {
         onClose={() => setIsRequestModalOpen(false)}
         tracks={profileData.tracks}
         onCreateRequest={handleCreateRequest}
+        isSubmitting={requestState.isSubmitting}
       />
     </div>
   );

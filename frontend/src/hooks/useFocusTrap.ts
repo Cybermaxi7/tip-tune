@@ -1,9 +1,9 @@
 import { useEffect, useCallback, RefObject } from 'react';
-import { getFocusableElements } from '@/utils/accessibility';
+import { focusInitialElement, getFocusableElements } from '@/utils/accessibility';
 
 interface UseFocusTrapOptions {
   enabled?: boolean;
-  initialFocus?: RefObject<HTMLElement>;
+  initialFocus?: RefObject<HTMLElement | null>;
   restoreFocus?: boolean;
 }
 
@@ -50,13 +50,8 @@ export const useFocusTrap = <T extends HTMLElement>(
 
     document.addEventListener('keydown', handleKeyDown);
 
-    if (initialFocus?.current) {
-      initialFocus.current.focus();
-    } else if (containerRef.current) {
-      const focusableElements = getFocusableElements(containerRef.current);
-      if (focusableElements.length > 0) {
-        focusableElements[0].focus();
-      }
+    if (containerRef.current) {
+      focusInitialElement(containerRef.current, initialFocus?.current);
     }
 
     return () => {

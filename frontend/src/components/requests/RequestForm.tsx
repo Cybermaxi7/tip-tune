@@ -33,22 +33,30 @@ const RequestForm: React.FC<RequestFormProps> = ({
     );
   }, [tracks, search]);
 
+  const effectiveTrackId = trackId || filteredTracks[0]?.id || '';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!trackId || tipAmount <= 0 || Number.isNaN(tipAmount)) return;
-    await onSubmit({ trackId, tipAmount, assetCode, message: message.trim() || undefined });
+    if (!effectiveTrackId || tipAmount <= 0 || Number.isNaN(tipAmount)) return;
+    await onSubmit({
+      trackId: effectiveTrackId,
+      tipAmount,
+      assetCode,
+      message: message.trim() || undefined,
+    });
   };
 
-  const selectedTrack = tracks.find((t) => t.id === trackId) ?? filteredTracks[0];
+  const selectedTrack = tracks.find((t) => t.id === effectiveTrackId) ?? filteredTracks[0];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-testid="song-request-form">
       {/* Track search */}
       <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-slate-100">
+        <label htmlFor="song-request-track" className="block text-sm font-medium text-slate-100">
           Choose a track
         </label>
         <input
+          id="song-request-search"
           type="search"
           placeholder="Search artist's tracks..."
           value={search}
@@ -56,11 +64,15 @@ const RequestForm: React.FC<RequestFormProps> = ({
           className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-primary-blue"
         />
         <select
-          value={selectedTrack?.id ?? ''}
+          id="song-request-track"
+          value={effectiveTrackId}
           onChange={(e) => setTrackId(e.target.value)}
           className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-primary-blue"
-          aria-label="Select track"
+          disabled={filteredTracks.length === 0}
         >
+          {filteredTracks.length === 0 && (
+            <option value="">No tracks match this search</option>
+          )}
           {filteredTracks.map((track) => (
             <option key={track.id} value={track.id}>
               {track.title}
@@ -71,11 +83,12 @@ const RequestForm: React.FC<RequestFormProps> = ({
 
       {/* Tip amount */}
       <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-slate-100">
+        <label htmlFor="song-request-tip-amount" className="block text-sm font-medium text-slate-100">
           Tip amount
         </label>
         <div className="flex items-center gap-2">
           <input
+            id="song-request-tip-amount"
             type="number"
             min={0}
             step={0.1}
@@ -99,10 +112,11 @@ const RequestForm: React.FC<RequestFormProps> = ({
 
       {/* Message */}
       <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-slate-100">
+        <label htmlFor="song-request-message" className="block text-sm font-medium text-slate-100">
           Message to artist (optional)
         </label>
         <textarea
+          id="song-request-message"
           rows={3}
           value={message}
           onChange={(e) => setMessage(e.target.value)}

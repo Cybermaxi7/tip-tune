@@ -7,7 +7,8 @@ export interface SongRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   tracks: Track[];
-  onCreateRequest: (values: RequestFormValues) => Promise<void>;
+  onCreateRequest: (values: RequestFormValues) => Promise<boolean>;
+  isSubmitting?: boolean;
 }
 
 const SongRequestModal: React.FC<SongRequestModalProps> = ({
@@ -15,16 +16,20 @@ const SongRequestModal: React.FC<SongRequestModalProps> = ({
   onClose,
   tracks,
   onCreateRequest,
+  isSubmitting: externalSubmitting,
 }) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localSubmitting, setLocalSubmitting] = useState(false);
+  const isSubmitting = externalSubmitting ?? localSubmitting;
 
   const handleSubmit = async (values: RequestFormValues) => {
     try {
-      setIsSubmitting(true);
-      await onCreateRequest(values);
-      onClose();
+      setLocalSubmitting(true);
+      const wasCreated = await onCreateRequest(values);
+      if (wasCreated) {
+        onClose();
+      }
     } finally {
-      setIsSubmitting(false);
+      setLocalSubmitting(false);
     }
   };
 
