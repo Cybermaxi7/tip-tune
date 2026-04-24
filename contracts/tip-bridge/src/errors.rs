@@ -19,4 +19,7 @@ pub enum Error {
     AmountBelowMinimum    = 13,
     AmountAboveMaximum    = 14,
     FeeTooHigh            = 15,
+    InvalidBridgeStatus   = 16,
+    DuplicateProof        = 17,
+    NoProofSubmitted      = 18,
 }
