@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useRef } from 'react';
 import { X } from 'lucide-react';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useModalA11y } from '@/hooks';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 interface ModalProps {
@@ -14,45 +14,14 @@ interface ModalProps {
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, description }) => {
     const modalRef = useRef<HTMLDivElement>(null);
     const closeButtonRef = useRef<HTMLButtonElement>(null);
-    const previousActiveElement = useRef<HTMLElement | null>(null);
     const prefersReducedMotion = useReducedMotion();
 
-    useFocusTrap(modalRef, { enabled: isOpen, initialFocus: closeButtonRef });
-
-    useEffect(() => {
-        if (isOpen) {
-            previousActiveElement.current = document.activeElement as HTMLElement;
-            document.body.style.overflow = 'hidden';
-        }
-
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [isOpen]);
-
-    useEffect(() => {
-        if (!isOpen && previousActiveElement.current) {
-            previousActiveElement.current.focus();
-        }
-    }, [isOpen]);
-
-    const handleKeyDown = useCallback(
-        (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                onClose();
-            }
-        },
-        [onClose]
-    );
-
-    useEffect(() => {
-        if (isOpen) {
-            document.addEventListener('keydown', handleKeyDown);
-        }
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [isOpen, handleKeyDown]);
+    useModalA11y({
+        isOpen,
+        containerRef: modalRef,
+        initialFocusRef: closeButtonRef,
+        onClose,
+    });
 
     const handleBackdropClick = (e: React.MouseEvent) => {
         if (e.target === e.currentTarget) {
@@ -70,16 +39,16 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, descrip
             aria-labelledby="modal-title"
             aria-describedby={description ? 'modal-description' : undefined}
         >
-            <div
+            <button
+                type="button"
                 className="fixed inset-0 bg-black/75 transition-opacity"
-                aria-hidden="true"
+                aria-label={`Dismiss ${title} modal backdrop`}
                 onClick={handleBackdropClick}
             />
 
             <div className="fixed inset-0 z-10 w-screen overflow-y-auto">
                 <div
                     className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0"
-                    onClick={handleBackdropClick}
                     role="presentation"
                 >
                     <div
@@ -87,7 +56,6 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, descrip
                         className={`relative transform overflow-hidden rounded-lg bg-navy-900 border border-navy-700 text-left shadow-xl sm:my-8 sm:w-full sm:max-w-lg ${
                             prefersReducedMotion ? '' : 'transition-all'
                         }`}
-                        onClick={(e) => e.stopPropagation()}
                         role="document"
                     >
                         <div className="flex items-center justify-between px-4 py-3 border-b border-navy-800">

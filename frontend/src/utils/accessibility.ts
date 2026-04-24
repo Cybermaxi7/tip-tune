@@ -57,6 +57,27 @@ export const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
   );
 };
 
+export const focusElement = (element: HTMLElement | null | undefined): boolean => {
+  if (!element || typeof element.focus !== 'function') {
+    return false;
+  }
+
+  element.focus();
+  return document.activeElement === element;
+};
+
+export const focusInitialElement = (
+  container: HTMLElement,
+  preferredElement?: HTMLElement | null
+): boolean => {
+  if (focusElement(preferredElement)) {
+    return true;
+  }
+
+  const focusableElements = getFocusableElements(container);
+  return focusElement(focusableElements[0]);
+};
+
 export const trapFocus = (container: HTMLElement, event: KeyboardEvent): void => {
   const focusableElements = getFocusableElements(container);
   
