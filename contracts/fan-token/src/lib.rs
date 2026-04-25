@@ -4,6 +4,7 @@ pub mod access;
 pub mod events;
 pub mod storage;
 pub mod types;
+pub mod metadata;
 
 #[cfg(test)]
 mod test;
@@ -342,5 +343,36 @@ impl FanTokenContract {
     /// Check whether an address is a trusted minter for an artist.
     pub fn is_trusted_minter(env: Env, artist: Address, minter: Address) -> bool {
         access::is_trusted_minter(&env, &artist, &minter)
+    }
+
+    // ── Metadata management ──────────────────────────────────────────
+
+    /// Update fan token metadata (name and symbol).
+    ///
+    /// Only the artist can update metadata, and only if it hasn't been frozen.
+    /// Once frozen, metadata cannot be changed.
+    pub fn update_metadata(
+        env: Env,
+        artist: Address,
+        name: String,
+        symbol: String,
+    ) -> Result<(), Error> {
+        metadata::update_metadata(env, artist, name, symbol)
+    }
+
+    /// Freeze metadata for the fan token.
+    ///
+    /// Only the artist can freeze metadata. Once frozen, the metadata cannot be
+    /// changed and the freeze cannot be reversed. This is useful for preventing
+    /// unauthorized changes once the token is in production use.
+    pub fn freeze_metadata(env: Env, artist: Address) -> Result<(), Error> {
+        metadata::freeze_metadata(env, artist)
+    }
+
+    /// Check if metadata is frozen for a fan token.
+    ///
+    /// Returns true if the metadata has been frozen and cannot be updated.
+    pub fn is_metadata_frozen(env: Env, artist: Address) -> bool {
+        metadata::is_metadata_frozen(env, artist)
     }
 }
