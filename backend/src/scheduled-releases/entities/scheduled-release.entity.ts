@@ -68,6 +68,14 @@ export class ScheduledRelease {
   @Column({ type: "timestamp", nullable: true })
   failedAt: Date;
 
+  /** Worker instance ID that currently holds the publish lease, or null. */
+  @Column({ type: "text", nullable: true })
+  claimedBy: string | null;
+
+  /** When the current lease expires; workers must renew or release before this time. */
+  @Column({ type: "timestamp", nullable: true })
+  claimExpiresAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

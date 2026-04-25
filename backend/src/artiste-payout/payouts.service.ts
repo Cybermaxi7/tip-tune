@@ -11,6 +11,7 @@ import { Repository, DataSource, QueryRunner } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import { ArtistBalance } from "./artist-balance.entity";
 import { ArtistBalanceAudit, ArtistBalanceAuditType } from "./artist-balance-audit.entity";
+import { PayoutAuditWriter } from "./payout-audit.writer";
 import { PayoutRequest, PayoutStatus } from "./payout-request.entity";
 import { CreatePayoutDto } from "./create-payout.dto";
 import { Artist } from "../artists/entities/artist.entity";
@@ -32,6 +33,7 @@ export class PayoutsService {
     private readonly artistRepo: Repository<Artist>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    private readonly auditWriter: PayoutAuditWriter,
   ) {
     this.minXlmThreshold = this.config.get<number>("PAYOUT_MIN_XLM", 10);
     this.minUsdcThreshold = this.config.get<number>("PAYOUT_MIN_USDC", 5);
@@ -209,30 +211,16 @@ export class PayoutsService {
         .findOne({ where: { artistId } });
 
       if (afterBalance) {
-        await this.auditRepo.save(
-          this.auditRepo.create({
-            artistId,
-            assetCode,
-            eventType: ArtistBalanceAuditType.PAYOUT_REQUEST,
-            amount: amount * -1,
-            payoutRequestId: saved.id,
-            balanceBefore:
-              assetCode === "XLM"
-                ? Number(balance.xlmBalance)
-                : Number(balance.usdcBalance),
-            balanceAfter:
-              assetCode === "XLM"
-                ? Number(afterBalance.xlmBalance)
-                : Number(afterBalance.usdcBalance),
-            pendingBefore:
-              assetCode === "XLM"
-                ? Number(balance.pendingXlm)
-                : Number(balance.pendingUsdc),
-            pendingAfter:
-              assetCode === "XLM"
-                ? Number(afterBalance.pendingXlm)
-                : Number(afterBalance.pendingUsdc),
-          }),
+        await this.auditWriter.writePayoutRequest(
+          artistId,
+          assetCode,
+          amount * -1,
+          assetCode === "XLM" ? Number(balance.xlmBalance) : Number(balance.usdcBalance),
+          assetCode === "XLM" ? Number(afterBalance.xlmBalance) : Number(afterBalance.usdcBalance),
+          assetCode === "XLM" ? Number(balance.pendingXlm) : Number(balance.pendingUsdc),
+          assetCode === "XLM" ? Number(afterBalance.pendingXlm) : Number(afterBalance.pendingUsdc),
+          saved.id,
+          qr,
         );
       }
 

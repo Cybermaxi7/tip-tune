@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
+import { LicensingLifecycle } from './licensing-lifecycle.enum';
 
+/** @deprecated Use LicensingLifecycle for new code. Kept for backward compatibility. */
 export enum LicenseRequestStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
@@ -13,6 +16,8 @@ export enum LicenseRequestStatus {
 }
 
 @Entity('license_requests')
+@Index(['requesterId', 'status'])
+@Index(['trackId', 'status'])
 export class LicenseRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -28,16 +33,28 @@ export class LicenseRequest {
 
   @Column({
     type: 'enum',
-    enum: LicenseRequestStatus,
-    default: LicenseRequestStatus.PENDING,
+    enum: LicensingLifecycle,
+    default: LicensingLifecycle.PENDING,
   })
-  status: LicenseRequestStatus;
+  status: LicensingLifecycle;
 
   @Column({ type: 'text', nullable: true })
-  responseMessage: string;
+  responseMessage: string | null;
 
   @Column({ nullable: true })
-  respondedAt: Date;
+  respondedAt: Date | null;
+
+  /** When this request automatically transitions to EXPIRED if unanswered. */
+  @Column({ type: 'timestamp', nullable: true })
+  expiresAt: Date | null;
+
+  /** When the request was withdrawn by the requester. */
+  @Column({ type: 'timestamp', nullable: true })
+  withdrawnAt: Date | null;
+
+  /** When the request was reopened after expiry. */
+  @Column({ type: 'timestamp', nullable: true })
+  reopenedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;
