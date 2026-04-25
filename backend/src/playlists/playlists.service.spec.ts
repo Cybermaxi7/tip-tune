@@ -1,26 +1,27 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException } from '@nestjs/common';
-import { PlaylistsService } from './playlists.service';
-import { Playlist } from './entities/playlist.entity';
-import { PlaylistTrack } from './entities/playlist-track.entity';
-import { Track } from '../tracks/entities/track.entity';
+import { Test, TestingModule } from "@nestjs/testing";
+import { getRepositoryToken } from "@nestjs/typeorm";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { PlaylistsService } from "./playlists.service";
+import { Playlist } from "./entities/playlist.entity";
+import { PlaylistTrack } from "./entities/playlist-track.entity";
+import { Track } from "../tracks/entities/track.entity";
 import {
   PlaylistCollaborator,
   PlaylistCollaboratorRole,
   PlaylistCollaboratorStatus,
-} from './entities/playlist-collaborator.entity';
+} from "./entities/playlist-collaborator.entity";
 import {
   PlaylistChangeAction,
   PlaylistChangeRequest,
   PlaylistChangeStatus,
-} from './entities/playlist-change-request.entity';
-import { SmartPlaylist } from './entities/smart-playlist.entity';
-import { ActivitiesService } from '../activities/activities.service';
-import { UsersService } from '../users/users.service';
-import { ActivityType } from '../activities/entities/activity.entity';
+} from "./entities/playlist-change-request.entity";
+import { SmartPlaylist } from "./entities/smart-playlist.entity";
+import { ActivitiesService } from "../activities/activities.service";
+import { UsersService } from "../users/users.service";
+import { ActivityType } from "../activities/entities/activity.entity";
+import { PlaylistChangeRequestValidator } from "./playlist-change-request.validator";
 
-describe('PlaylistsService', () => {
+describe("PlaylistsService", () => {
   let service: PlaylistsService;
   let activitiesService: ActivitiesService;
 
@@ -69,6 +70,10 @@ describe('PlaylistsService', () => {
     findByEmail: jest.fn(),
   };
 
+  const mockChangeRequestValidator = {
+    validateForApproval: jest.fn().mockResolvedValue({ isValid: true }),
+  };
+
   const mockQueryBuilder = {
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
@@ -80,7 +85,9 @@ describe('PlaylistsService', () => {
   };
 
   beforeEach(async () => {
-    playlistTrackRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+    playlistTrackRepository.createQueryBuilder.mockReturnValue(
+      mockQueryBuilder,
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -117,6 +124,10 @@ describe('PlaylistsService', () => {
           provide: UsersService,
           useValue: mockUsersService,
         },
+        {
+          provide: PlaylistChangeRequestValidator,
+          useValue: mockChangeRequestValidator,
+        },
       ],
     }).compile();
 
@@ -128,10 +139,10 @@ describe('PlaylistsService', () => {
     jest.clearAllMocks();
   });
 
-  it('creates a change request when approval is required for an editor', async () => {
+  it("creates a change request when approval is required for an editor", async () => {
     const playlist = {
-      id: 'playlist-1',
-      userId: 'owner-1',
+      id: "playlist-1",
+      userId: "owner-1",
       approvalRequired: true,
       smartPlaylist: null,
     } as Playlist;
@@ -142,36 +153,41 @@ describe('PlaylistsService', () => {
       status: PlaylistCollaboratorStatus.ACCEPTED,
     });
     trackRepository.findOne.mockResolvedValue({
-      id: 'track-1',
-      title: 'Track 1',
+      id: "track-1",
+      title: "Track 1",
     });
     playlistTrackRepository.findOne.mockResolvedValue(null);
 
     const changeRequest = {
-      id: 'change-1',
-      playlistId: 'playlist-1',
-      requestedById: 'editor-1',
+      id: "change-1",
+      playlistId: "playlist-1",
+      requestedById: "editor-1",
       action: PlaylistChangeAction.ADD_TRACK,
       status: PlaylistChangeStatus.PENDING,
-      payload: { trackId: 'track-1' },
-    } as PlaylistChangeRequest;
+      payload: { trackId: "track-1" },
+    } as unknown as PlaylistChangeRequest;
 
     changeRequestRepository.create.mockReturnValue(changeRequest);
     changeRequestRepository.save.mockResolvedValue(changeRequest);
 
-    const result = await service.addTrack('playlist-1', 'editor-1', {
-      trackId: 'track-1',
+    const result = await service.addTrack("playlist-1", "editor-1", {
+      trackId: "track-1",
     });
 
     expect(result).toEqual(changeRequest);
     expect(changeRequestRepository.save).toHaveBeenCalled();
     expect(playlistTrackRepository.save).not.toHaveBeenCalled();
+    expect(changeRequestRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expiresAt: expect.any(Date),
+      }),
+    );
   });
 
-  it('prevents viewers from adding tracks', async () => {
+  it("prevents viewers from adding tracks", async () => {
     const playlist = {
-      id: 'playlist-1',
-      userId: 'owner-1',
+      id: "playlist-1",
+      userId: "owner-1",
       approvalRequired: false,
       smartPlaylist: null,
     } as Playlist;
@@ -183,16 +199,16 @@ describe('PlaylistsService', () => {
     });
 
     await expect(
-      service.addTrack('playlist-1', 'viewer-1', {
-        trackId: 'track-1',
+      service.addTrack("playlist-1", "viewer-1", {
+        trackId: "track-1",
       }),
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('logs activity when a track is added directly', async () => {
+  it("logs activity when a track is added directly", async () => {
     const playlist = {
-      id: 'playlist-1',
-      userId: 'owner-1',
+      id: "playlist-1",
+      userId: "owner-1",
       approvalRequired: false,
       trackCount: 0,
       totalDuration: 0,
@@ -201,19 +217,19 @@ describe('PlaylistsService', () => {
 
     playlistRepository.findOne.mockResolvedValue(playlist);
     trackRepository.findOne.mockResolvedValue({
-      id: 'track-1',
-      title: 'Track 1',
+      id: "track-1",
+      title: "Track 1",
       duration: 120,
     });
     playlistTrackRepository.findOne.mockResolvedValue(null);
     playlistTrackRepository.create.mockReturnValue({
       playlistId: playlist.id,
-      trackId: 'track-1',
+      trackId: "track-1",
     });
     playlistTrackRepository.save.mockResolvedValue({});
     playlistRepository.save.mockResolvedValue(playlist);
 
-    await service.addTrack('playlist-1', 'owner-1', { trackId: 'track-1' });
+    await service.addTrack("playlist-1", "owner-1", { trackId: "track-1" });
 
     expect(activitiesService.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -222,36 +238,36 @@ describe('PlaylistsService', () => {
     );
   });
 
-  it('invites collaborators as owner', async () => {
+  it("invites collaborators as owner", async () => {
     const playlist = {
-      id: 'playlist-1',
-      userId: 'owner-1',
+      id: "playlist-1",
+      userId: "owner-1",
       smartPlaylist: null,
     } as Playlist;
 
     playlistRepository.findOne.mockResolvedValue(playlist);
     mockUsersService.findByUsername.mockResolvedValue({
-      id: 'user-2',
+      id: "user-2",
     });
     collaboratorRepository.findOne.mockResolvedValue(null);
     collaboratorRepository.create.mockReturnValue({
-      playlistId: 'playlist-1',
-      userId: 'user-2',
+      playlistId: "playlist-1",
+      userId: "user-2",
       role: PlaylistCollaboratorRole.EDITOR,
       status: PlaylistCollaboratorStatus.PENDING,
     });
     collaboratorRepository.save.mockResolvedValue({
-      id: 'collab-1',
-      playlistId: 'playlist-1',
-      userId: 'user-2',
+      id: "collab-1",
+      playlistId: "playlist-1",
+      userId: "user-2",
       role: PlaylistCollaboratorRole.EDITOR,
       status: PlaylistCollaboratorStatus.PENDING,
     });
 
     const result = await service.inviteCollaborator(
-      'playlist-1',
-      'owner-1',
-      'user2',
+      "playlist-1",
+      "owner-1",
+      "user2",
       PlaylistCollaboratorRole.EDITOR,
     );
 
@@ -259,50 +275,147 @@ describe('PlaylistsService', () => {
     expect(activitiesService.create).toHaveBeenCalled();
   });
 
-  it('accepts collaborator invites', async () => {
+  it("accepts collaborator invites", async () => {
     collaboratorRepository.findOne.mockResolvedValue({
-      id: 'collab-1',
-      playlistId: 'playlist-1',
-      userId: 'user-2',
+      id: "collab-1",
+      playlistId: "playlist-1",
+      userId: "user-2",
       role: PlaylistCollaboratorRole.EDITOR,
       status: PlaylistCollaboratorStatus.PENDING,
     });
     collaboratorRepository.save.mockResolvedValue({
-      id: 'collab-1',
-      playlistId: 'playlist-1',
-      userId: 'user-2',
+      id: "collab-1",
+      playlistId: "playlist-1",
+      userId: "user-2",
       role: PlaylistCollaboratorRole.EDITOR,
       status: PlaylistCollaboratorStatus.ACCEPTED,
     });
 
     const result = await service.acceptCollaboratorInvite(
-      'playlist-1',
-      'collab-1',
-      'user-2',
+      "playlist-1",
+      "collab-1",
+      "user-2",
     );
 
     expect(result.status).toBe(PlaylistCollaboratorStatus.ACCEPTED);
     expect(activitiesService.create).toHaveBeenCalled();
   });
 
-  it('removes collaborators as owner', async () => {
+  it("removes collaborators as owner", async () => {
     const playlist = {
-      id: 'playlist-1',
-      userId: 'owner-1',
+      id: "playlist-1",
+      userId: "owner-1",
       smartPlaylist: null,
     } as Playlist;
 
     playlistRepository.findOne.mockResolvedValue(playlist);
     collaboratorRepository.findOne.mockResolvedValue({
-      id: 'collab-1',
-      playlistId: 'playlist-1',
-      userId: 'user-2',
+      id: "collab-1",
+      playlistId: "playlist-1",
+      userId: "user-2",
       role: PlaylistCollaboratorRole.EDITOR,
     });
 
-    await service.removeCollaborator('playlist-1', 'collab-1', 'owner-1');
+    await service.removeCollaborator("playlist-1", "collab-1", "owner-1");
 
     expect(collaboratorRepository.remove).toHaveBeenCalled();
     expect(activitiesService.create).toHaveBeenCalled();
+  });
+
+  it("expires stale change requests during approval", async () => {
+    playlistRepository.findOne.mockResolvedValue({
+      id: "playlist-1",
+      userId: "owner-1",
+      approvalRequired: true,
+      smartPlaylist: null,
+    });
+    changeRequestRepository.findOne.mockResolvedValue({
+      id: "change-1",
+      playlistId: "playlist-1",
+      requestedById: "editor-1",
+      action: PlaylistChangeAction.ADD_TRACK,
+      status: PlaylistChangeStatus.PENDING,
+      payload: { trackId: "track-1" },
+    });
+    mockChangeRequestValidator.validateForApproval.mockResolvedValue({
+      isValid: false,
+      status: PlaylistChangeStatus.EXPIRED,
+      rejectionReason: "Change request has expired",
+    });
+
+    await expect(
+      service.approveChangeRequest("playlist-1", "change-1", "owner-1"),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(changeRequestRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "change-1",
+        status: PlaylistChangeStatus.EXPIRED,
+        rejectionReason: "Change request has expired",
+      }),
+    );
+  });
+
+  it("rejects change requests that are no longer valid at approval time", async () => {
+    playlistRepository.findOne.mockResolvedValue({
+      id: "playlist-1",
+      userId: "owner-1",
+      approvalRequired: true,
+      smartPlaylist: null,
+    });
+    changeRequestRepository.findOne.mockResolvedValue({
+      id: "change-1",
+      playlistId: "playlist-1",
+      requestedById: "editor-1",
+      action: PlaylistChangeAction.ADD_TRACK,
+      status: PlaylistChangeStatus.PENDING,
+      payload: { trackId: "track-1" },
+    });
+    mockChangeRequestValidator.validateForApproval.mockResolvedValue({
+      isValid: false,
+      status: PlaylistChangeStatus.REJECTED,
+      rejectionReason:
+        "Requester no longer has permission to edit this playlist",
+    });
+
+    await expect(
+      service.approveChangeRequest("playlist-1", "change-1", "owner-1"),
+    ).rejects.toThrow(
+      "Requester no longer has permission to edit this playlist",
+    );
+
+    expect(changeRequestRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: PlaylistChangeStatus.REJECTED,
+        rejectionReason:
+          "Requester no longer has permission to edit this playlist",
+      }),
+    );
+  });
+
+  it("rejects duplicate approvals without replaying the change", async () => {
+    playlistRepository.findOne.mockResolvedValue({
+      id: "playlist-1",
+      userId: "owner-1",
+      approvalRequired: true,
+      smartPlaylist: null,
+    });
+    changeRequestRepository.findOne.mockResolvedValue({
+      id: "change-1",
+      playlistId: "playlist-1",
+      requestedById: "editor-1",
+      action: PlaylistChangeAction.ADD_TRACK,
+      status: PlaylistChangeStatus.APPROVED,
+      payload: { trackId: "track-1" },
+    });
+
+    await expect(
+      service.approveChangeRequest("playlist-1", "change-1", "owner-1"),
+    ).rejects.toThrow("Change request is already approved");
+
+    expect(
+      mockChangeRequestValidator.validateForApproval,
+    ).not.toHaveBeenCalled();
+    expect(playlistTrackRepository.save).not.toHaveBeenCalled();
   });
 });

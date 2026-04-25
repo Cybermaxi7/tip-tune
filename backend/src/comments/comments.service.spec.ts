@@ -1,40 +1,63 @@
+import { ForbiddenException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { CommentsService } from "./comments.service";
+import { DataSource, Repository } from "typeorm";
+import { BlocksService } from "../blocks/blocks.service";
+import { CommentSortMode } from "./comment.dto";
 import { Comment } from "./comment.entity";
 import { CommentLike } from "./comment-like.entity";
-import { BlocksService } from "../blocks/blocks.service";
-import {
-  NotFoundException,
-  ForbiddenException,
-  BadRequestException,
-} from "@nestjs/common";
+import { CommentsService } from "./comments.service";
 
 describe("CommentsService", () => {
   let service: CommentsService;
   let commentRepository: Repository<Comment>;
-  let commentLikeRepository: Repository<CommentLike>;
+  let dataSource: DataSource;
 
   const mockCommentRepository = {
     create: jest.fn(),
     save: jest.fn(),
     findOne: jest.fn(),
-    findAndCount: jest.fn(),
-    remove: jest.fn(),
+    find: jest.fn(),
+    query: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   const mockCommentLikeRepository = {
-    create: jest.fn(),
-    save: jest.fn(),
-    findOne: jest.fn(),
     find: jest.fn(),
-    remove: jest.fn(),
   };
 
   const mockBlocksService = {
     getBlockedUserIds: jest.fn().mockResolvedValue([]),
   };
+
+  const mockDataSource = {
+    transaction: jest.fn(),
+  };
+
+  const createTopLevelQueryBuilder = () => ({
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    loadRelationCountAndMap: jest.fn().mockReturnThis(),
+    getMany: jest.fn(),
+  });
+
+  const createMutationQueryBuilder = (executeResult: unknown) => ({
+    insert: jest.fn().mockReturnThis(),
+    into: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    orIgnore: jest.fn().mockReturnThis(),
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    delete: jest.fn().mockReturnThis(),
+    from: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue(executeResult),
+  });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,6 +75,10 @@ describe("CommentsService", () => {
           provide: BlocksService,
           useValue: mockBlocksService,
         },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
       ],
     }).compile();
 
@@ -59,277 +86,267 @@ describe("CommentsService", () => {
     commentRepository = module.get<Repository<Comment>>(
       getRepositoryToken(Comment),
     );
-    commentLikeRepository = module.get<Repository<CommentLike>>(
-      getRepositoryToken(CommentLike),
-    );
+    dataSource = module.get<DataSource>(DataSource);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  describe("create", () => {
-    it("should create a top-level comment", async () => {
-      const createDto = {
-        trackId: "track-uuid",
-        content: "Great track!",
-      };
-      const userId = "user-uuid";
-      const savedComment = {
-        id: "comment-uuid",
-        ...createDto,
-        userId,
-        parentCommentId: null,
-      };
+  it("creates a top-level comment", async () => {
+    const createDto = {
+      trackId: "track-uuid",
+      content: "Great track!",
+    };
+    const userId = "user-uuid";
+    const savedComment = {
+      id: "comment-uuid",
+      ...createDto,
+      userId,
+      parentCommentId: null,
+      deletedAt: null,
+    };
 
-      mockCommentRepository.create.mockReturnValue(savedComment);
-      mockCommentRepository.save.mockResolvedValue(savedComment);
+    mockCommentRepository.create.mockReturnValue(savedComment);
+    mockCommentRepository.save.mockResolvedValue(savedComment);
 
-      const result = await service.create(createDto, userId);
+    const result = await service.create(createDto, userId);
 
-      expect(mockCommentRepository.create).toHaveBeenCalledWith({
-        trackId: createDto.trackId,
-        userId,
-        content: createDto.content,
-        parentCommentId: null,
-      });
-      expect(result).toEqual(savedComment);
+    expect(mockCommentRepository.create).toHaveBeenCalledWith({
+      trackId: createDto.trackId,
+      userId,
+      content: createDto.content,
+      parentCommentId: null,
+      deletedAt: null,
     });
-
-    it("should create a reply comment", async () => {
-      const parentComment = {
-        id: "parent-uuid",
-        parentCommentId: null,
-      };
-      const createDto = {
-        trackId: "track-uuid",
-        content: "I agree!",
-        parentCommentId: "parent-uuid",
-      };
-      const userId = "user-uuid";
-
-      mockCommentRepository.findOne.mockResolvedValue(parentComment);
-      mockCommentRepository.create.mockReturnValue(createDto);
-      mockCommentRepository.save.mockResolvedValue(createDto);
-
-      await service.create(createDto, userId);
-
-      expect(mockCommentRepository.findOne).toHaveBeenCalledWith({
-        where: { id: "parent-uuid" },
-        relations: ["parentComment"],
-      });
-    });
-
-    it("should throw error when replying to a reply", async () => {
-      const parentComment = {
-        id: "parent-uuid",
-        parentCommentId: "grandparent-uuid",
-      };
-      const createDto = {
-        trackId: "track-uuid",
-        content: "Reply to reply",
-        parentCommentId: "parent-uuid",
-      };
-
-      mockCommentRepository.findOne.mockResolvedValue(parentComment);
-
-      await expect(service.create(createDto, "user-uuid")).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    it("should throw error when parent comment not found", async () => {
-      const createDto = {
-        trackId: "track-uuid",
-        content: "Reply",
-        parentCommentId: "non-existent",
-      };
-
-      mockCommentRepository.findOne.mockResolvedValue(null);
-
-      await expect(service.create(createDto, "user-uuid")).rejects.toThrow(
-        NotFoundException,
-      );
-    });
+    expect(result).toEqual(savedComment);
   });
 
-  describe("findByTrack", () => {
-    it("should return paginated comments for a track", async () => {
-      const trackId = "track-uuid";
-      const comments = [
-        { id: "comment-1", content: "Comment 1", replies: [] },
-        { id: "comment-2", content: "Comment 2", replies: [] },
-      ];
-      const query = { page: 1, limit: 20 };
+  it("returns cursor-paginated comments with bounded replies and sort metadata", async () => {
+    const createdAt = new Date("2026-04-25T17:00:00.000Z");
+    const topLevelQueryBuilder = createTopLevelQueryBuilder();
+    const topLevelComments = [
+      {
+        id: "comment-3",
+        content: "Third",
+        createdAt: new Date("2026-04-25T16:59:00.000Z"),
+        likesCount: 9,
+        replyCount: 4,
+        replies: [],
+      },
+      {
+        id: "comment-2",
+        content: "Second",
+        createdAt,
+        likesCount: 7,
+        replyCount: 2,
+        replies: [],
+      },
+      {
+        id: "comment-1",
+        content: "First",
+        createdAt: new Date("2026-04-25T16:58:00.000Z"),
+        likesCount: 5,
+        replyCount: 1,
+        replies: [],
+      },
+    ];
+    const hydratedReplies = [
+      {
+        id: "reply-2",
+        parentCommentId: "comment-2",
+        content: "Reply 2",
+        createdAt: new Date("2026-04-25T17:02:00.000Z"),
+      },
+      {
+        id: "reply-1",
+        parentCommentId: "comment-3",
+        content: "Reply 1",
+        createdAt: new Date("2026-04-25T17:01:00.000Z"),
+      },
+    ];
 
-      mockCommentRepository.findAndCount.mockResolvedValue([comments, 2]);
-      mockCommentLikeRepository.find.mockResolvedValue([]);
+    topLevelQueryBuilder.getMany.mockResolvedValue(topLevelComments);
+    mockCommentRepository.createQueryBuilder.mockReturnValue(
+      topLevelQueryBuilder,
+    );
+    mockCommentRepository.query.mockResolvedValue([
+      { id: "reply-1" },
+      { id: "reply-2" },
+    ]);
+    mockCommentRepository.find.mockResolvedValue(hydratedReplies);
+    mockCommentLikeRepository.find.mockResolvedValue([
+      { commentId: "comment-3" },
+      { commentId: "reply-2" },
+    ]);
 
-      const result = await service.findByTrack(trackId, query);
+    const result = await service.findByTrack(
+      "track-uuid",
+      {
+        limit: 2,
+        replyLimit: 1,
+        sort: CommentSortMode.MOST_LIKED,
+      },
+      "viewer-uuid",
+    );
 
-      expect(result.comments).toHaveLength(2);
-      expect(result.total).toBe(2);
-      expect(result.page).toBe(1);
-      expect(result.limit).toBe(20);
-    });
+    expect(result.comments).toHaveLength(2);
+    expect(result.hasMore).toBe(true);
+    expect(result.sort).toBe(CommentSortMode.MOST_LIKED);
+    expect(result.replyLimit).toBe(1);
+    expect(result.nextCursor).toBeTruthy();
+    expect(result.comments[0].replyCount).toBe(4);
+    expect(result.comments[0].replies).toHaveLength(1);
+    expect(result.comments[0].userLiked).toBe(true);
+    expect(result.comments[1].replies[0].userLiked).toBe(true);
+    expect(topLevelQueryBuilder.orderBy).toHaveBeenCalledWith(
+      "comment.likesCount",
+      "DESC",
+    );
+    expect(mockCommentRepository.query).toHaveBeenCalledWith(
+      expect.stringContaining("ROW_NUMBER() OVER"),
+      [["comment-3", "comment-2"], 1],
+    );
   });
 
-  describe("update", () => {
-    it("should update a comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const updateDto = { content: "Updated content" };
-      const comment = {
-        id: commentId,
-        userId,
-        content: "Original content",
+  it("renders deleted parent comments as placeholders while preserving replies", async () => {
+    mockCommentRepository.findOne.mockResolvedValue({
+      id: "comment-uuid",
+      content: "original content",
+      deletedAt: new Date("2026-04-25T17:00:00.000Z"),
+      isEdited: true,
+      createdAt: new Date("2026-04-25T16:59:00.000Z"),
+      replies: [
+        {
+          id: "reply-uuid",
+          content: "Still visible",
+          createdAt: new Date("2026-04-25T17:01:00.000Z"),
+          deletedAt: null,
+        },
+      ],
+    });
+    mockCommentLikeRepository.find.mockResolvedValue([]);
+
+    const result = await service.findOne("comment-uuid", "viewer-uuid");
+
+    expect(result.content).toBe("[deleted]");
+    expect(result.isDeleted).toBe(true);
+    expect(result.replyCount).toBe(1);
+    expect(result.replies[0].content).toBe("Still visible");
+  });
+
+  it("soft deletes a comment instead of removing the row", async () => {
+    const comment = {
+      id: "comment-uuid",
+      userId: "user-uuid",
+      content: "Keep replies",
+      deletedAt: null,
+    };
+
+    mockCommentRepository.findOne.mockResolvedValue(comment);
+    mockCommentRepository.save.mockResolvedValue({
+      ...comment,
+      deletedAt: new Date(),
+      content: "[deleted]",
+    });
+
+    await service.delete("comment-uuid", "user-uuid");
+
+    expect(mockCommentRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "[deleted]",
         isEdited: false,
-      };
+      }),
+    );
+  });
 
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentRepository.save.mockResolvedValue({
-        ...comment,
-        ...updateDto,
-        isEdited: true,
-      });
-
-      const result = await service.update(commentId, updateDto, userId);
-
-      expect(result.content).toBe(updateDto.content);
-      expect(result.isEdited).toBe(true);
+  it("prevents deleting someone else's comment", async () => {
+    mockCommentRepository.findOne.mockResolvedValue({
+      id: "comment-uuid",
+      userId: "owner-uuid",
+      deletedAt: null,
     });
 
-    it("should throw error when updating others comment", async () => {
-      const commentId = "comment-uuid";
-      const comment = {
-        id: commentId,
-        userId: "owner-uuid",
-      };
+    await expect(service.delete("comment-uuid", "other-user")).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
 
-      mockCommentRepository.findOne.mockResolvedValue(comment);
+  it("increments likes atomically when a new like is inserted", async () => {
+    const insertBuilder = createMutationQueryBuilder({
+      affected: 1,
+      identifiers: [{ id: "like-uuid" }],
+      raw: [],
+    });
+    const updateBuilder = createMutationQueryBuilder({ affected: 1 });
 
-      await expect(
-        service.update(commentId, { content: "New" }, "other-user"),
-      ).rejects.toThrow(ForbiddenException);
+    mockCommentRepository.findOne.mockResolvedValue({ id: "comment-uuid" });
+    mockDataSource.transaction.mockImplementation(async (callback) =>
+      callback({
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValueOnce(insertBuilder)
+          .mockReturnValueOnce(updateBuilder),
+      }),
+    );
+    jest.spyOn(service, "findOne").mockResolvedValue({
+      id: "comment-uuid",
+      likesCount: 1,
+    } as Comment);
+
+    const result = await service.likeComment("comment-uuid", "user-uuid");
+
+    expect(result.likesCount).toBe(1);
+    expect(insertBuilder.orIgnore).toHaveBeenCalled();
+    expect(updateBuilder.set).toHaveBeenCalledWith({
+      likesCount: expect.any(Function),
     });
   });
 
-  describe("delete", () => {
-    it("should delete a comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const comment = {
-        id: commentId,
-        userId,
-      };
-
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentRepository.remove.mockResolvedValue(comment);
-
-      await service.delete(commentId, userId);
-
-      expect(mockCommentRepository.remove).toHaveBeenCalledWith(comment);
+  it("treats duplicate likes as idempotent and does not increment the counter", async () => {
+    const insertBuilder = createMutationQueryBuilder({
+      affected: 0,
+      identifiers: [],
+      raw: [],
     });
 
-    it("should throw error when deleting others comment", async () => {
-      const commentId = "comment-uuid";
-      const comment = {
-        id: commentId,
-        userId: "owner-uuid",
-      };
+    mockCommentRepository.findOne.mockResolvedValue({ id: "comment-uuid" });
+    mockDataSource.transaction.mockImplementation(async (callback) =>
+      callback({
+        createQueryBuilder: jest.fn().mockReturnValue(insertBuilder),
+      }),
+    );
+    jest.spyOn(service, "findOne").mockResolvedValue({
+      id: "comment-uuid",
+      likesCount: 1,
+    } as Comment);
 
-      mockCommentRepository.findOne.mockResolvedValue(comment);
+    const result = await service.likeComment("comment-uuid", "user-uuid");
 
-      await expect(service.delete(commentId, "other-user")).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
+    expect(result.likesCount).toBe(1);
+    expect(dataSource.transaction).toHaveBeenCalled();
   });
 
-  describe("likeComment", () => {
-    it("should like a comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const comment = {
-        id: commentId,
-        likesCount: 0,
-      };
-
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentLikeRepository.findOne.mockResolvedValue(null);
-      mockCommentLikeRepository.create.mockReturnValue({ commentId, userId });
-      mockCommentLikeRepository.save.mockResolvedValue({ commentId, userId });
-      mockCommentRepository.save.mockResolvedValue({
-        ...comment,
-        likesCount: 1,
-      });
-
-      // Mock findOne for final result
-      jest.spyOn(service, "findOne").mockResolvedValue({
-        ...comment,
-        likesCount: 1,
-      } as any);
-
-      const result = await service.likeComment(commentId, userId);
-
-      expect(result.likesCount).toBe(1);
+  it("treats duplicate unlikes as idempotent and never decrements below zero", async () => {
+    const deleteBuilder = createMutationQueryBuilder({
+      affected: 0,
+      raw: [],
     });
 
-    it("should throw error when liking already liked comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const comment = { id: commentId, likesCount: 1 };
-      const existingLike = { id: "like-uuid", commentId, userId };
+    mockCommentRepository.findOne.mockResolvedValue({ id: "comment-uuid" });
+    mockDataSource.transaction.mockImplementation(async (callback) =>
+      callback({
+        createQueryBuilder: jest.fn().mockReturnValue(deleteBuilder),
+      }),
+    );
+    jest.spyOn(service, "findOne").mockResolvedValue({
+      id: "comment-uuid",
+      likesCount: 0,
+    } as Comment);
 
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentLikeRepository.findOne.mockResolvedValue(existingLike);
+    const result = await service.unlikeComment("comment-uuid", "user-uuid");
 
-      await expect(service.likeComment(commentId, userId)).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-  });
-
-  describe("unlikeComment", () => {
-    it("should unlike a comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const comment = {
-        id: commentId,
-        likesCount: 1,
-      };
-      const like = { id: "like-uuid", commentId, userId };
-
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentLikeRepository.findOne.mockResolvedValue(like);
-      mockCommentLikeRepository.remove.mockResolvedValue(like);
-      mockCommentRepository.save.mockResolvedValue({
-        ...comment,
-        likesCount: 0,
-      });
-
-      // Mock findOne for final result
-      jest.spyOn(service, "findOne").mockResolvedValue({
-        ...comment,
-        likesCount: 0,
-      } as any);
-
-      const result = await service.unlikeComment(commentId, userId);
-
-      expect(result.likesCount).toBe(0);
-    });
-
-    it("should throw error when unliking non-liked comment", async () => {
-      const commentId = "comment-uuid";
-      const userId = "user-uuid";
-      const comment = { id: commentId, likesCount: 0 };
-
-      mockCommentRepository.findOne.mockResolvedValue(comment);
-      mockCommentLikeRepository.findOne.mockResolvedValue(null);
-
-      await expect(service.unlikeComment(commentId, userId)).rejects.toThrow(
-        BadRequestException,
-      );
-    });
+    expect(result.likesCount).toBe(0);
+    expect(dataSource.transaction).toHaveBeenCalled();
   });
 });

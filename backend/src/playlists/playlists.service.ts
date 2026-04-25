@@ -38,9 +38,14 @@ import {
   PlaylistPaginationDto,
 } from "./dto/pagination.dto";
 import { DuplicatePlaylistDto } from "./dto/duplicate-playlist.dto";
+import {
+  PlaylistChangeRequestValidationResult,
+  PlaylistChangeRequestValidator,
+} from "./playlist-change-request.validator";
 
 @Injectable()
 export class PlaylistsService {
+  private static readonly CHANGE_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   private readonly logger = new Logger(PlaylistsService.name);
 
   constructor(
@@ -58,6 +63,7 @@ export class PlaylistsService {
     private readonly trackRepository: Repository<Track>,
     private readonly activitiesService: ActivitiesService,
     private readonly usersService: UsersService,
+    private readonly changeRequestValidator: PlaylistChangeRequestValidator,
   ) {}
 
   /**
@@ -730,7 +736,6 @@ export class PlaylistsService {
       where: {
         id: changeRequestId,
         playlistId,
-        status: PlaylistChangeStatus.PENDING,
       },
     });
 
@@ -738,48 +743,78 @@ export class PlaylistsService {
       throw new NotFoundException("Change request not found");
     }
 
-    // Check if change request has expired
-    if (changeRequest.expiresAt && new Date() > changeRequest.expiresAt) {
-      changeRequest.status = PlaylistChangeStatus.EXPIRED;
-      await this.changeRequestRepository.save(changeRequest);
-      throw new BadRequestException("Change request has expired");
+    if (changeRequest.status !== PlaylistChangeStatus.PENDING) {
+      throw new BadRequestException(
+        `Change request is already ${changeRequest.status}`,
+      );
+    }
+
+    const validationResult =
+      await this.changeRequestValidator.validateForApproval(
+        playlist,
+        changeRequest,
+      );
+    if (!validationResult.isValid) {
+      await this.rejectInvalidChangeRequest(
+        changeRequest,
+        userId,
+        validationResult,
+      );
     }
 
     let updatedPlaylist: Playlist;
 
-    if (changeRequest.action === PlaylistChangeAction.ADD_TRACK) {
-      const payload = changeRequest.payload as {
-        trackId: string;
-        position?: number;
-      };
-      updatedPlaylist = await this.applyAddTrack(
-        playlist,
-        changeRequest.requestedById,
-        payload,
-        userId,
-      );
-    } else if (changeRequest.action === PlaylistChangeAction.REMOVE_TRACK) {
-      const payload = changeRequest.payload as { trackId: string };
-      updatedPlaylist = await this.applyRemoveTrack(
-        playlistId,
-        payload.trackId,
-        changeRequest.requestedById,
-        userId,
-      );
-    } else if (changeRequest.action === PlaylistChangeAction.REORDER_TRACKS) {
-      const payload = changeRequest.payload as {
-        tracks: { trackId: string; position: number }[];
-      };
-      await this.applyReorderTracks(playlistId, { tracks: payload.tracks });
-      updatedPlaylist = await this.findOne(playlistId, userId);
-    } else {
-      throw new BadRequestException("Unsupported change action");
+    try {
+      if (changeRequest.action === PlaylistChangeAction.ADD_TRACK) {
+        const payload = changeRequest.payload as {
+          trackId: string;
+          position?: number;
+        };
+        updatedPlaylist = await this.applyAddTrack(
+          playlist,
+          changeRequest.requestedById,
+          payload,
+          userId,
+        );
+      } else if (changeRequest.action === PlaylistChangeAction.REMOVE_TRACK) {
+        const payload = changeRequest.payload as { trackId: string };
+        updatedPlaylist = await this.applyRemoveTrack(
+          playlistId,
+          payload.trackId,
+          changeRequest.requestedById,
+          userId,
+        );
+      } else if (changeRequest.action === PlaylistChangeAction.REORDER_TRACKS) {
+        const payload = changeRequest.payload as {
+          tracks: { trackId: string; position: number }[];
+        };
+        await this.applyReorderTracks(playlistId, { tracks: payload.tracks });
+        updatedPlaylist = await this.findOne(playlistId, userId);
+      } else {
+        throw new BadRequestException("Unsupported change action");
+      }
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        await this.rejectInvalidChangeRequest(changeRequest, userId, {
+          isValid: false,
+          status: PlaylistChangeStatus.REJECTED,
+          rejectionReason: this.extractExceptionMessage(
+            error,
+            "Change request is no longer valid",
+          ),
+        });
+      }
+
+      throw error;
     }
 
     changeRequest.status = PlaylistChangeStatus.APPROVED;
     changeRequest.reviewedById = userId;
     changeRequest.reviewedAt = new Date();
-    changeRequest.updatedAt = new Date();
     await this.changeRequestRepository.save(changeRequest);
 
     await this.safeCreateActivity({
@@ -817,7 +852,6 @@ export class PlaylistsService {
       where: {
         id: changeRequestId,
         playlistId,
-        status: PlaylistChangeStatus.PENDING,
       },
     });
 
@@ -825,9 +859,16 @@ export class PlaylistsService {
       throw new NotFoundException("Change request not found");
     }
 
-    // Check if change request has expired
+    if (changeRequest.status !== PlaylistChangeStatus.PENDING) {
+      throw new BadRequestException(
+        `Change request is already ${changeRequest.status}`,
+      );
+    }
+
     if (changeRequest.expiresAt && new Date() > changeRequest.expiresAt) {
       changeRequest.status = PlaylistChangeStatus.EXPIRED;
+      changeRequest.reviewedById = userId;
+      changeRequest.reviewedAt = new Date();
       await this.changeRequestRepository.save(changeRequest);
       throw new BadRequestException("Change request has expired");
     }
@@ -836,7 +877,6 @@ export class PlaylistsService {
     changeRequest.reviewedById = userId;
     changeRequest.reviewedAt = new Date();
     changeRequest.rejectionReason = reason || null;
-    changeRequest.updatedAt = new Date();
 
     const saved = await this.changeRequestRepository.save(changeRequest);
 
@@ -865,12 +905,17 @@ export class PlaylistsService {
       where: {
         id: changeRequestId,
         playlistId,
-        status: PlaylistChangeStatus.PENDING,
       },
     });
 
     if (!changeRequest) {
       throw new NotFoundException("Change request not found");
+    }
+
+    if (changeRequest.status !== PlaylistChangeStatus.PENDING) {
+      throw new BadRequestException(
+        `Change request is already ${changeRequest.status}`,
+      );
     }
 
     // Only the requester or playlist owner can cancel
@@ -883,7 +928,6 @@ export class PlaylistsService {
 
     changeRequest.status = PlaylistChangeStatus.CANCELLED;
     changeRequest.cancelledAt = new Date();
-    changeRequest.updatedAt = new Date();
 
     const saved = await this.changeRequestRepository.save(changeRequest);
 
@@ -919,7 +963,6 @@ export class PlaylistsService {
 
     for (const request of expiredRequests) {
       request.status = PlaylistChangeStatus.EXPIRED;
-      request.updatedAt = new Date();
       await this.changeRequestRepository.save(request);
 
       await this.safeCreateActivity({
@@ -934,7 +977,9 @@ export class PlaylistsService {
       });
     }
 
-    this.logger.log(`Cleaned up ${expiredRequests.length} expired change requests`);
+    this.logger.log(
+      `Cleaned up ${expiredRequests.length} expired change requests`,
+    );
     return expiredRequests.length;
   }
 
@@ -1062,6 +1107,7 @@ export class PlaylistsService {
       action,
       payload,
       status: PlaylistChangeStatus.PENDING,
+      expiresAt: new Date(Date.now() + PlaylistsService.CHANGE_REQUEST_TTL_MS),
     });
 
     const saved = await this.changeRequestRepository.save(changeRequest);
@@ -1079,6 +1125,68 @@ export class PlaylistsService {
     });
 
     return saved;
+  }
+
+  private async rejectInvalidChangeRequest(
+    changeRequest: PlaylistChangeRequest,
+    reviewerUserId: string,
+    validationResult: PlaylistChangeRequestValidationResult,
+  ): Promise<never> {
+    changeRequest.status =
+      validationResult.status || PlaylistChangeStatus.REJECTED;
+    changeRequest.reviewedById = reviewerUserId;
+    changeRequest.reviewedAt = new Date();
+    changeRequest.rejectionReason =
+      validationResult.rejectionReason || "Change request is no longer valid";
+
+    await this.changeRequestRepository.save(changeRequest);
+
+    await this.safeCreateActivity({
+      userId: reviewerUserId,
+      activityType:
+        changeRequest.status === PlaylistChangeStatus.EXPIRED
+          ? ActivityType.PLAYLIST_CHANGE_EXPIRED
+          : ActivityType.PLAYLIST_CHANGE_REJECTED,
+      entityType: EntityType.PLAYLIST,
+      entityId: changeRequest.playlistId,
+      metadata: {
+        changeRequestId: changeRequest.id,
+        action: changeRequest.action,
+        requestedByUserId: changeRequest.requestedById,
+        reason: changeRequest.rejectionReason,
+      },
+    });
+
+    throw new BadRequestException(changeRequest.rejectionReason);
+  }
+
+  private extractExceptionMessage(
+    error: BadRequestException | ForbiddenException | NotFoundException,
+    fallbackMessage: string,
+  ): string {
+    const response = error.getResponse();
+
+    if (typeof response === "string") {
+      return response;
+    }
+
+    if (
+      typeof response === "object" &&
+      response !== null &&
+      "message" in response
+    ) {
+      const message = response.message;
+
+      if (Array.isArray(message)) {
+        return message.join(", ");
+      }
+
+      if (typeof message === "string") {
+        return message;
+      }
+    }
+
+    return fallbackMessage;
   }
 
   private async ensureTrackIsValidForAdd(
