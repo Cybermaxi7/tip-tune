@@ -1,8 +1,12 @@
 #![no_std]
 
+mod catalog;
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
+
+pub use catalog::{BadgeCatalogEntry, CatalogKey};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -67,7 +71,10 @@ pub struct TipNftBadgeContract;
 
 #[contractimpl]
 impl TipNftBadgeContract {
-    /// Initialize the badge contract with admin and thresholds
+    /// Initialize the badge contract with admin and thresholds.
+    /// The whale_threshold and early_adopter_cutoff are written into the
+    /// configurable catalog so that eligibility checks use catalog storage
+    /// from the start.
     pub fn initialize(env: Env, admin: Address, whale_threshold: i128, early_adopter_cutoff: u64) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("Already initialized");
@@ -80,6 +87,16 @@ impl TipNftBadgeContract {
             .instance()
             .set(&DataKey::EarlyAdopterThreshold, &early_adopter_cutoff);
         env.storage().instance().set(&DataKey::TotalBadges, &0u64);
+
+        // Seed catalog entries for WhaleTipper and EarlySupporter from init
+        // params so that eligibility uses the configurable thresholds.
+        let mut whale_entry = catalog::default_catalog_entry(&env, BadgeType::WhaleTipper);
+        whale_entry.total_amount_threshold = whale_threshold;
+        catalog::set_catalog_entry(&env, &whale_entry);
+
+        let mut early_entry = catalog::default_catalog_entry(&env, BadgeType::EarlySupporter);
+        early_entry.early_cutoff = early_adopter_cutoff;
+        catalog::set_catalog_entry(&env, &early_entry);
     }
 
     /// Record a tip for a user (called by escrow/verification contract)
@@ -104,7 +121,7 @@ impl TipNftBadgeContract {
 
     /// Check if a user is eligible for a specific badge type
     pub fn check_badge_eligibility(env: Env, user: Address, badge_type: BadgeType) -> bool {
-        let badge_ordinal = Self::badge_type_ordinal(&badge_type);
+        let badge_ordinal = catalog::badge_type_ordinal(&badge_type);
         if env
             .storage()
             .persistent()
@@ -114,28 +131,17 @@ impl TipNftBadgeContract {
         }
 
         let stats = Self::get_user_stats(env.clone(), user);
+        let entry = catalog::get_catalog_entry(&env, badge_type);
 
         match badge_type {
-            BadgeType::FirstTip => stats.tip_count >= 1,
-            BadgeType::TenTips => stats.tip_count >= 10,
-            BadgeType::HundredTips => stats.tip_count >= 100,
-            BadgeType::WhaleTipper => {
-                let threshold: i128 = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::WhaleThreshold)
-                    .unwrap_or(10000);
-                stats.total_amount >= threshold
-            }
+            BadgeType::FirstTip
+            | BadgeType::TenTips
+            | BadgeType::HundredTips => stats.tip_count >= entry.tip_count_threshold,
+            BadgeType::WhaleTipper => stats.total_amount >= entry.total_amount_threshold,
             BadgeType::EarlySupporter => {
-                let cutoff: u64 = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::EarlyAdopterThreshold)
-                    .unwrap_or(0);
-                stats.first_tip_time > 0 && stats.first_tip_time <= cutoff
+                stats.first_tip_time > 0 && stats.first_tip_time <= entry.early_cutoff
             }
-            BadgeType::GenreSupporter => stats.genre_tips >= 5,
+            BadgeType::GenreSupporter => stats.genre_tips >= entry.genre_tips_threshold,
         }
     }
 
@@ -161,7 +167,7 @@ impl TipNftBadgeContract {
 
     /// Mint a badge NFT for a user.
     pub fn mint_badge(env: Env, user: Address, badge_type: BadgeType) -> Result<String, Error> {
-        let badge_ordinal = Self::badge_type_ordinal(&badge_type);
+        let badge_ordinal = catalog::badge_type_ordinal(&badge_type);
 
         if env
             .storage()
@@ -199,11 +205,13 @@ impl TipNftBadgeContract {
         }
         let badge_id = String::from_bytes(&env, &buf[i..]);
 
+        let catalog_entry = catalog::get_catalog_entry(&env, badge_type);
+
         let metadata = BadgeMetadata {
             badge_id: badge_id.clone(),
             badge_type,
-            name: Self::badge_name(&env, badge_type),
-            description: Self::badge_description(&env, badge_type),
+            name: catalog_entry.name,
+            description: catalog_entry.description,
             owner: user.clone(),
             minted_at: env.ledger().timestamp(),
         };
@@ -279,48 +287,40 @@ impl TipNftBadgeContract {
             .unwrap_or(0)
     }
 
-    fn badge_type_ordinal(badge_type: &BadgeType) -> u32 {
-        match badge_type {
-            BadgeType::FirstTip => 0,
-            BadgeType::TenTips => 1,
-            BadgeType::HundredTips => 2,
-            BadgeType::WhaleTipper => 3,
-            BadgeType::EarlySupporter => 4,
-            BadgeType::GenreSupporter => 5,
-        }
+    // ── Admin: catalog management ──────────────────────────────────────
+
+    /// Admin: update the name and description for a badge type.
+    pub fn set_badge_metadata(
+        env: Env,
+        badge_type: BadgeType,
+        name: String,
+        description: String,
+    ) -> BadgeCatalogEntry {
+        catalog::update_badge_metadata(&env, badge_type, name, description)
     }
 
-    fn badge_name(env: &Env, badge_type: BadgeType) -> String {
-        match badge_type {
-            BadgeType::FirstTip => String::from_str(env, "First Tip"),
-            BadgeType::TenTips => String::from_str(env, "Ten Tips"),
-            BadgeType::HundredTips => String::from_str(env, "Hundred Tips"),
-            BadgeType::WhaleTipper => String::from_str(env, "Whale Tipper"),
-            BadgeType::EarlySupporter => String::from_str(env, "Early Supporter"),
-            BadgeType::GenreSupporter => String::from_str(env, "Genre Supporter"),
-        }
+    /// Admin: update the threshold values for a badge type.
+    pub fn set_badge_threshold(
+        env: Env,
+        badge_type: BadgeType,
+        tip_count_threshold: u64,
+        total_amount_threshold: i128,
+        genre_tips_threshold: u64,
+        early_cutoff: u64,
+    ) -> BadgeCatalogEntry {
+        catalog::update_badge_threshold(
+            &env,
+            badge_type,
+            tip_count_threshold,
+            total_amount_threshold,
+            genre_tips_threshold,
+            early_cutoff,
+        )
     }
 
-    fn badge_description(env: &Env, badge_type: BadgeType) -> String {
-        match badge_type {
-            BadgeType::FirstTip => {
-                String::from_str(env, "Awarded for sending the first recorded tip.")
-            }
-            BadgeType::TenTips => String::from_str(env, "Awarded after ten recorded tips."),
-            BadgeType::HundredTips => {
-                String::from_str(env, "Awarded after one hundred recorded tips.")
-            }
-            BadgeType::WhaleTipper => {
-                String::from_str(env, "Awarded for crossing the whale tipping threshold.")
-            }
-            BadgeType::EarlySupporter => String::from_str(
-                env,
-                "Awarded for tipping before the early supporter cutoff.",
-            ),
-            BadgeType::GenreSupporter => {
-                String::from_str(env, "Awarded for five or more genre-specific tips.")
-            }
-        }
+    /// Read the catalog entry (with defaults) for a badge type.
+    pub fn get_badge_catalog_entry(env: Env, badge_type: BadgeType) -> BadgeCatalogEntry {
+        catalog::get_catalog_entry(&env, badge_type)
     }
 }
 

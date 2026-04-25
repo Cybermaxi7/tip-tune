@@ -11,6 +11,10 @@ pub struct FanToken {
     pub total_supply: i128,
     pub circulating_supply: i128,
     pub created_at: u64,
+    /// Optional maximum supply cap. 0 means uncapped.
+    pub max_supply: i128,
+    /// Total tokens burned so far.
+    pub burned_supply: i128,
 }
 
 /// Represents a fan's balance of a specific artist's fan token.
@@ -44,4 +48,12 @@ pub enum Error {
     InvalidMetadata = 7,
     /// Arithmetic overflow
     Overflow = 8,
+    /// Minting would exceed the max supply cap
+    CapExceeded = 9,
+    /// Cannot burn more than the holder's balance
+    InsufficientBalanceBurn = 10,
+    /// Address is already a trusted minter
+    AlreadyTrustedMinter = 11,
+    /// Address is not a trusted minter
+    NotTrustedMinter = 12,
 }
