@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check } from 'lucide-react';
 import { useNotifications, Notification } from '../hooks/useNotifications';
 import { Toast, ToastProps } from './Toast';
+import { useToastQueue, QueuedToast } from '../hooks/useToastQueue';
 
 export const NotificationCenter: React.FC = () => {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
-  const [toasts, setToasts] = useState<ToastProps[]>([]);
+  const { toasts, addToast, removeToast } = useToastQueue();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const prevNotificationsRef = useRef<Notification[]>([]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -22,41 +22,38 @@ export const NotificationCenter: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Detect new notifications and show toast
   useEffect(() => {
     if (prevNotificationsRef.current.length > 0 && notifications.length > prevNotificationsRef.current.length) {
       const newNotification = notifications[0];
-      // Only show toast if it's new (compare timestamps or IDs if needed, but length check is simple proxy)
       addToast({
         id: newNotification.id,
-        type: 'success', // Default to success for tips
+        type: 'tip',
         title: newNotification.title,
         message: newNotification.message,
-        onClose: removeToast,
       });
     }
     prevNotificationsRef.current = notifications;
-  }, [notifications]);
-
-  const addToast = (toast: Omit<ToastProps, 'duration'>) => {
-    setToasts((prev) => [...prev, { ...toast, duration: 5000 }]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, [notifications, addToast]);
 
   const handleMarkAsRead = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     markAsRead(id);
   };
 
+  const convertToast = (toast: QueuedToast): ToastProps => ({
+    id: toast.id,
+    type: toast.type,
+    title: toast.title,
+    message: toast.message,
+    duration: 5000,
+    onClose: removeToast,
+  });
+
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Toast Container */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
         {toasts.map((toast) => (
-          <Toast key={toast.id} {...toast} />
+          <Toast key={toast.id} {...convertToast(toast)} />
         ))}
       </div>
 
