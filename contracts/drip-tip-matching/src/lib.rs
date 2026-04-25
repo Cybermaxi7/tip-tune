@@ -1,9 +1,10 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec};
 
 mod errors;
 mod events;
+mod queries;
 mod types;
 
 pub use errors::Error;
@@ -92,8 +93,8 @@ impl TipMatchingContract {
         let pool_id = next_pool_id(&env);
         let pool = MatchingPool {
             pool_id: pool_id.clone(),
-            sponsor,
-            artist,
+            sponsor: sponsor.clone(),
+            artist: artist.clone(),
             pool_amount,
             matched_amount: 0,
             remaining_amount: pool_amount,
@@ -107,6 +108,8 @@ impl TipMatchingContract {
         };
 
         save_pool(&env, &pool);
+        queries::add_to_sponsor_index(&env, &sponsor, &pool_id);
+        queries::add_to_artist_index(&env, &artist, &pool_id);
         events::emit_pool_created(&env, &pool_id);
         Ok(pool_id)
     }
@@ -240,5 +243,13 @@ impl TipMatchingContract {
 
     pub fn get_matched_amount(env: Env, pool_id: String) -> Result<i128, Error> {
         Ok(Self::get_pool_status(env, pool_id)?.matched_amount)
+    }
+
+    pub fn list_pools_by_sponsor(env: Env, sponsor: Address) -> Vec<String> {
+        queries::get_pools_by_sponsor(&env, &sponsor)
+    }
+
+    pub fn list_pools_by_artist(env: Env, artist: Address) -> Vec<String> {
+        queries::get_pools_by_artist(&env, &artist)
     }
 }
