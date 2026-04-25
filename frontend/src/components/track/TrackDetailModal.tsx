@@ -177,7 +177,7 @@ const TrackDetailModal: React.FC<TrackDetailModalProps> = ({
     loadComments();
   }, [track?.id, isOpen]);
 
-  if (!track) return null;
+  if (!isOpen || !track) return null;
 
   const handleTip = async (amount: number, currency: string) => {
     // TODO: Implement tip functionality
@@ -194,7 +194,7 @@ const TrackDetailModal: React.FC<TrackDetailModalProps> = ({
       });
     } else {
       // Fallback: copy to clipboard
-      navigator.clipboard.writeText(window.location.href);
+      navigator.clipboard?.writeText?.(window.location.href);
     }
   };
 
