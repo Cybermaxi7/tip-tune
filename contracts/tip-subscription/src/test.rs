@@ -128,3 +128,95 @@ fn test_lifecycle_pause_resume_cancel() {
         SubscriptionStatus::Cancelled
     );
 }
+
+#[test]
+fn test_duplicate_active_subscription_is_rejected() {
+    let (_, client, subscriber, artist, token_client, _) = setup_test();
+
+    client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    assert!(client
+        .try_create_subscription(
+            &subscriber,
+            &artist,
+            &token_client.address,
+            &100,
+            &SubscriptionFrequency::Weekly,
+        )
+        .is_err());
+}
+
+#[test]
+fn test_get_subscriptions_by_subscriber() {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let contract_id = env.register_contract(None, TipSubscriptionContract);
+    let client = TipSubscriptionContractClient::new(&env, &contract_id);
+
+    let subscriber = Address::generate(&env);
+    let artist1 = Address::generate(&env);
+    let artist2 = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_client = token::Client::new(&env, &token_id);
+
+    let sub_id1 = client.create_subscription(
+        &subscriber,
+        &artist1,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+    let sub_id2 = client.create_subscription(
+        &subscriber,
+        &artist2,
+        &token_client.address,
+        &200,
+        &SubscriptionFrequency::Monthly,
+    );
+
+    let ids = client.get_sub_ids_by_subscriber(&subscriber);
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids.get(0).unwrap(), sub_id1);
+    assert_eq!(ids.get(1).unwrap(), sub_id2);
+
+    let subscriptions = client.get_subscriptions_by_subscriber(&subscriber);
+    assert_eq!(subscriptions.len(), 2);
+    assert_eq!(subscriptions.get(0).unwrap().amount, 100);
+    assert_eq!(subscriptions.get(1).unwrap().amount, 200);
+}
+
+#[test]
+fn test_cancel_allows_recreate_for_same_relationship() {
+    let (_, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+    client.cancel_subscription(&sub_id);
+
+    let recreated = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &150,
+        &SubscriptionFrequency::Monthly,
+    );
+
+    assert_ne!(sub_id, recreated);
+    assert_eq!(
+        client.get_subscription(&recreated).status,
+        SubscriptionStatus::Active
+    );
+}

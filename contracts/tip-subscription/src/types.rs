@@ -38,4 +38,5 @@ pub enum Error {
     InvalidAmount = 5,
     Overflow = 6,
     TimestampOverflow = 7,
+    DuplicateSubscription = 8,
 }

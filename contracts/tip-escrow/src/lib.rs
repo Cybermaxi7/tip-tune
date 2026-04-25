@@ -1,5 +1,7 @@
 #![no_std]
 
+mod escrow_actions;
+mod events;
 mod storage;
 mod types;
 
@@ -7,7 +9,9 @@ mod types;
 mod test;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
-use types::{Asset, Error, EscrowStatus, RoyaltySplit, TipEscrow, TipRecord};
+use types::{
+    Asset, DistributionEvent, Error, EscrowStatus, RoyaltySplit, TipEscrow, TipEvent, TipRecord,
+};
 
 #[contract]
 pub struct TipEscrowContract;
@@ -75,13 +79,21 @@ impl TipEscrowContract {
 
         storage::save_escrow(&env, escrow_id.clone(), &escrow);
 
-        // Emit event
-        env.events().publish(
-            (symbol_short!("escrow"), symbol_short!("created")),
-            escrow.clone(),
-        );
+        events::escrow_created(&env, escrow.clone());
 
         Ok(escrow_id)
+    }
+
+    pub fn release_escrow(env: Env, escrow_id: String, caller: Address) -> Result<(), Error> {
+        escrow_actions::release(&env, escrow_id, caller)
+    }
+
+    pub fn refund_escrow(env: Env, escrow_id: String, caller: Address) -> Result<(), Error> {
+        escrow_actions::refund(&env, escrow_id, caller)
+    }
+
+    pub fn dispute_escrow(env: Env, escrow_id: String, caller: Address) -> Result<(), Error> {
+        escrow_actions::dispute(&env, escrow_id, caller)
     }
 
     pub fn get_escrow(env: Env, escrow_id: String) -> Result<TipEscrow, Error> {
@@ -118,6 +130,16 @@ impl TipEscrowContract {
                     .ok_or(Error::Overflow)?;
                 if split_amount > 0 {
                     token_client.transfer(&sender, &split.recipient, &split_amount);
+                    events::distribution_recorded(
+                        &env,
+                        DistributionEvent {
+                            tip_id,
+                            recipient: split.recipient,
+                            amount: split_amount,
+                            percentage: split.percentage,
+                            is_artist_remainder: false,
+                        },
+                    );
                     remaining = remaining
                         .checked_sub(split_amount)
                         .ok_or(Error::Underflow)?;
@@ -127,10 +149,30 @@ impl TipEscrowContract {
             // Send remaining to artist
             if remaining > 0 {
                 token_client.transfer(&sender, &artist, &remaining);
+                events::distribution_recorded(
+                    &env,
+                    DistributionEvent {
+                        tip_id,
+                        recipient: artist.clone(),
+                        amount: remaining,
+                        percentage: 0,
+                        is_artist_remainder: true,
+                    },
+                );
             }
         } else {
             // No splits, send full amount to artist
             token_client.transfer(&sender, &artist, &amount);
+            events::distribution_recorded(
+                &env,
+                DistributionEvent {
+                    tip_id,
+                    recipient: artist.clone(),
+                    amount,
+                    percentage: 10000,
+                    is_artist_remainder: true,
+                },
+            );
         }
 
         // Record tip
@@ -141,19 +183,44 @@ impl TipEscrowContract {
             timestamp: env.ledger().timestamp(),
         };
         storage::save_tip(&env, tip_id, &tip);
+        events::tip_sent(
+            &env,
+            TipEvent {
+                tip_id,
+                sender,
+                artist,
+                amount,
+                timestamp: tip.timestamp,
+            },
+        );
 
         Ok(tip_id)
     }
 
     /// Configure royalty splits for an artist
-    pub fn set_royalty_splits(env: Env, artist: Address, splits: Vec<RoyaltySplit>) {
+    pub fn set_royalty_splits(
+        env: Env,
+        artist: Address,
+        splits: Vec<RoyaltySplit>,
+    ) -> Result<(), Error> {
         artist.require_auth();
 
         // Validate splits total <= 100%
-        let total: u32 = splits.iter().map(|s| s.percentage).sum();
-        assert!(total <= 10000, "Total splits exceed 100%");
+        let mut total: u32 = 0;
+        for split in splits.iter() {
+            if split.percentage == 0 || split.percentage > 10000 {
+                return Err(Error::InvalidRoyaltySplit);
+            }
+            total = total
+                .checked_add(split.percentage)
+                .ok_or(Error::InvalidRoyaltySplit)?;
+        }
+        if total > 10000 {
+            return Err(Error::InvalidRoyaltySplit);
+        }
 
         storage::save_splits(&env, &artist, &splits);
+        Ok(())
     }
 
     /// Get royalty splits for an artist

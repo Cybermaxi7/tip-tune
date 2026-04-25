@@ -1,10 +1,11 @@
 #![no_std]
 
 pub mod events;
+pub mod indexes;
 pub mod storage;
 pub mod types;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
 use storage::{read_subscription, write_subscription};
 use types::{Error, Subscription, SubscriptionFrequency, SubscriptionStatus};
 
@@ -28,6 +29,9 @@ impl TipSubscriptionContract {
 
         if amount <= 0 {
             return Err(Error::InvalidAmount);
+        }
+        if indexes::active_subscription(&env, &subscriber, &artist, &token).is_some() {
+            return Err(Error::DuplicateSubscription);
         }
 
         let count_key = symbol_short!("sub_cnt");
@@ -69,6 +73,8 @@ impl TipSubscriptionContract {
         };
 
         write_subscription(&env, &sub_id, &subscription);
+        indexes::put_active_subscription(&env, &subscription);
+        indexes::add_subscriber_subscription(&env, &subscriber, &sub_id);
 
         events::subscription_created(&env, sub_id.clone(), subscriber);
 
@@ -118,6 +124,7 @@ impl TipSubscriptionContract {
 
         sub.status = SubscriptionStatus::Cancelled;
         write_subscription(&env, &subscription_id, &sub);
+        indexes::remove_active_subscription(&env, &sub);
 
         events::subscription_cancelled(&env, subscription_id, sub.subscriber);
 
@@ -161,6 +168,21 @@ impl TipSubscriptionContract {
 
     pub fn get_subscription(env: Env, subscription_id: String) -> Result<Subscription, Error> {
         read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)
+    }
+
+    pub fn get_sub_ids_by_subscriber(env: Env, subscriber: Address) -> Vec<String> {
+        indexes::subscriber_subscriptions(&env, &subscriber)
+    }
+
+    pub fn get_subscriptions_by_subscriber(env: Env, subscriber: Address) -> Vec<Subscription> {
+        let ids = indexes::subscriber_subscriptions(&env, &subscriber);
+        let mut subscriptions = Vec::new(&env);
+        for id in ids.iter() {
+            if let Some(subscription) = read_subscription(&env, &id) {
+                subscriptions.push_back(subscription);
+            }
+        }
+        subscriptions
     }
 }
 
