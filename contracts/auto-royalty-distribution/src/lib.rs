@@ -5,6 +5,7 @@ use soroban_sdk::{
 };
 
 mod storage;
+mod queries;
 use storage::{get_track_owner, set_track_owner};
 
 #[contracterror]
@@ -250,6 +251,29 @@ impl AutoRoyaltyDistribution {
             .persistent()
             .get(&DataKey::LogCount(track_id))
             .unwrap_or(0)
+    }
+
+    /// Get all settlements for a payout ID
+    pub fn get_settlements_by_payout(
+        env: Env,
+        payout_id: String,
+    ) -> Result<Vec<DistributionRecord>, Error> {
+        queries::get_settlements_by_payout_id(env, payout_id)
+    }
+
+    /// Get paginated recent settlements for a track
+    pub fn get_recent_settlements_paginated(
+        env: Env,
+        track_id: String,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Vec<DistributionRecord>, Error> {
+        queries::get_recent_settlements(env, track_id, page, page_size)
+    }
+
+    /// Check if a payout has been settled
+    pub fn is_payout_settled(env: Env, payout_id: String) -> bool {
+        queries::is_settled(env, payout_id)
     }
 }
 

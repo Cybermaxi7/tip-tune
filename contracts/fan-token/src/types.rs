@@ -56,4 +56,6 @@ pub enum Error {
     AlreadyTrustedMinter = 11,
     /// Address is not a trusted minter
     NotTrustedMinter = 12,
+    /// Metadata is frozen and cannot be updated
+    MetadataFrozen = 13,
 }
