@@ -37,3 +37,31 @@ pub fn tokens_transferred(env: &Env, from: &Address, to: &Address, artist: &Addr
         (from.clone(), to.clone(), artist.clone(), amount),
     );
 }
+
+pub fn tokens_burned(env: &Env, artist: &Address, holder: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("fan_tkn"), symbol_short!("burn")),
+        (artist.clone(), holder.clone(), amount),
+    );
+}
+
+pub fn cap_set(env: &Env, artist: &Address, max_supply: i128) {
+    env.events().publish(
+        (symbol_short!("fan_tkn"), symbol_short!("cap")),
+        (artist.clone(), max_supply),
+    );
+}
+
+pub fn trusted_minter_added(env: &Env, artist: &Address, minter: &Address) {
+    env.events().publish(
+        (symbol_short!("fan_tkn"), symbol_short!("add_m")),
+        (artist.clone(), minter.clone()),
+    );
+}
+
+pub fn trusted_minter_removed(env: &Env, artist: &Address, minter: &Address) {
+    env.events().publish(
+        (symbol_short!("fan_tkn"), symbol_short!("rm_m")),
+        (artist.clone(), minter.clone()),
+    );
+}

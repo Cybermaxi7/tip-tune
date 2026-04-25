@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod access;
 pub mod events;
 pub mod storage;
 pub mod types;
@@ -22,19 +23,29 @@ impl FanTokenContract {
     ///
     /// Only the artist (caller) may create their token. Each artist can have
     /// exactly one fan token. The `initial_supply` is minted to the artist's
-    /// own balance.
+    /// own balance. `max_supply` sets an optional cap (0 = uncapped).
     pub fn create_fan_token(
         env: Env,
         artist: Address,
         name: String,
         symbol: String,
         initial_supply: i128,
+        max_supply: i128,
     ) -> Result<String, Error> {
         artist.require_auth();
 
         // Validate inputs
         if initial_supply < 0 {
             return Err(Error::InvalidAmount);
+        }
+
+        if max_supply < 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        // If a cap is set, initial_supply must not exceed it
+        if max_supply > 0 && initial_supply > max_supply {
+            return Err(Error::CapExceeded);
         }
 
         if name.is_empty() || symbol.is_empty() {
@@ -57,6 +68,8 @@ impl FanTokenContract {
             total_supply: initial_supply,
             circulating_supply: initial_supply,
             created_at: now,
+            max_supply,
+            burned_supply: 0,
         };
 
         storage::set_fan_token(&env, &artist, &fan_token);
@@ -80,16 +93,17 @@ impl FanTokenContract {
 
     /// Mint fan tokens for a fan when they send a tip to an artist.
     ///
-    /// The artist must authorize the mint (typically called by the tipping
-    /// contract on behalf of the artist). Fan tokens minted =
-    /// `tip_amount * TIP_TO_TOKEN_RATIO`.
+    /// The artist or a trusted minter must authorize the mint. Fan tokens
+    /// minted = `tip_amount * TIP_TO_TOKEN_RATIO`. Cap is enforced when
+    /// max_supply > 0.
     pub fn mint_for_tip(
         env: Env,
         artist: Address,
+        caller: Address,
         fan: Address,
         tip_amount: i128,
     ) -> Result<i128, Error> {
-        artist.require_auth();
+        access::require_artist_or_trusted(&env, &artist, &caller)?;
 
         if tip_amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -100,6 +114,17 @@ impl FanTokenContract {
         let tokens_to_mint = tip_amount
             .checked_mul(TIP_TO_TOKEN_RATIO)
             .ok_or(Error::Overflow)?;
+
+        // Cap enforcement
+        if token.max_supply > 0 {
+            let new_supply = token
+                .total_supply
+                .checked_add(tokens_to_mint)
+                .ok_or(Error::Overflow)?;
+            if new_supply > token.max_supply {
+                return Err(Error::CapExceeded);
+            }
+        }
 
         // Update supply
         token.total_supply = token
@@ -215,5 +240,107 @@ impl FanTokenContract {
     /// Return the detailed balance record for a fan.
     pub fn get_fan_balance(env: Env, artist: Address, fan: Address) -> Result<FanBalance, Error> {
         storage::get_balance(&env, &artist, &fan).ok_or(Error::InsufficientBalance)
+    }
+
+    // ── Supply controls: burn ────────────────────────────────────────
+
+    /// Burn fan tokens from the caller's balance.
+    ///
+    /// Reduces both the holder's balance and the circulating supply.
+    /// total_supply stays the same; burned_supply tracks total burns.
+    /// Artist or trusted minter authorization is NOT required — any
+    /// holder may burn their own tokens.
+    pub fn burn(
+        env: Env,
+        artist: Address,
+        holder: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        holder.require_auth();
+
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let mut token = storage::get_fan_token(&env, &artist).ok_or(Error::TokenNotFound)?;
+
+        let mut bal =
+            storage::get_balance(&env, &artist, &holder).ok_or(Error::InsufficientBalanceBurn)?;
+
+        if bal.balance < amount {
+            return Err(Error::InsufficientBalanceBurn);
+        }
+
+        bal.balance = bal.balance.checked_sub(amount).ok_or(Error::Overflow)?;
+        bal.last_updated = env.ledger().timestamp();
+        storage::set_balance(&env, &artist, &holder, &bal);
+
+        token.circulating_supply = token
+            .circulating_supply
+            .checked_sub(amount)
+            .ok_or(Error::Overflow)?;
+        token.burned_supply = token.burned_supply.checked_add(amount).ok_or(Error::Overflow)?;
+        storage::set_fan_token(&env, &artist, &token);
+
+        events::tokens_burned(&env, &artist, &holder, amount);
+
+        Ok(())
+    }
+
+    // ── Supply controls: cap ─────────────────────────────────────────
+
+    /// Set or update the max supply cap for an artist's fan token.
+    ///
+    /// Only the artist may set the cap. Setting to 0 removes the cap.
+    /// The new cap must be >= current total_supply.
+    pub fn set_cap(env: Env, artist: Address, max_supply: i128) -> Result<(), Error> {
+        artist.require_auth();
+
+        if max_supply < 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let mut token = storage::get_fan_token(&env, &artist).ok_or(Error::TokenNotFound)?;
+
+        // New cap must accommodate existing supply (unless uncapped)
+        if max_supply > 0 && token.total_supply > max_supply {
+            return Err(Error::CapExceeded);
+        }
+
+        token.max_supply = max_supply;
+        storage::set_fan_token(&env, &artist, &token);
+
+        events::cap_set(&env, &artist, max_supply);
+
+        Ok(())
+    }
+
+    // ── Trusted-minter management ────────────────────────────────────
+
+    /// Add a trusted minter who may call mint_for_tip on behalf of the artist.
+    pub fn add_trusted_minter(
+        env: Env,
+        artist: Address,
+        minter: Address,
+    ) -> Result<(), Error> {
+        access::add_trusted_minter(&env, &artist, &minter)?;
+        events::trusted_minter_added(&env, &artist, &minter);
+        Ok(())
+    }
+
+    /// Remove a trusted minter.
+    pub fn remove_trusted_minter(
+        env: Env,
+        artist: Address,
+        minter: Address,
+    ) -> Result<(), Error> {
+        access::remove_trusted_minter(&env, &artist, &minter)?;
+        events::trusted_minter_removed(&env, &artist, &minter);
+        Ok(())
+    }
+
+    /// Check whether an address is a trusted minter for an artist.
+    pub fn is_trusted_minter(env: Env, artist: Address, minter: Address) -> bool {
+        access::is_trusted_minter(&env, &artist, &minter)
     }
 }
