@@ -44,6 +44,22 @@ export interface LeaderboardQuery {
   genre?: string;
 }
 
+export interface LeaderboardEntryLike {
+  tipperName: string;
+  total: number;
+  tipCount: number;
+  sortOrder: number;
+}
+
+export const compareLeaderboardEntries = <T extends LeaderboardEntryLike>(left: T, right: T): number =>
+  right.total - left.total ||
+  right.tipCount - left.tipCount ||
+  left.sortOrder - right.sortOrder ||
+  left.tipperName.localeCompare(right.tipperName);
+
+export const getNextLeaderboardSortOrder = <T extends Pick<LeaderboardEntryLike, 'sortOrder'>>(entries: T[]): number =>
+  entries.reduce((max, entry) => Math.max(max, entry.sortOrder), -1) + 1;
+
 class LeaderboardService {
   async getLeaderboard(
     type: LeaderboardType,
