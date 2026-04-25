@@ -208,7 +208,7 @@ export class TipsService {
 
     // Check for first-tip reward dispatch
     const tipCount = await this.tipRepository.count({
-      where: { fromUserId: userId, status: TipStatus.VERIFIED },
+      where: { fromUser: userId, status: TipStatus.VERIFIED },
     });
     if (tipCount === 1) {
       this.logger.log(`User ${userId} sent their first tip. Triggering referral reward claim.`);

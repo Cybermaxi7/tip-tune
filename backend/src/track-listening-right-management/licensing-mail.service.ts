@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { LicenseRequest, LicenseRequestStatus } from "./license-request.entity";
+import { LicenseRequest } from "./license-request.entity";
+import { LicensingLifecycle } from "./licensing-lifecycle.enum";
 
 export interface MailPayload {
   to: string;
@@ -38,13 +39,13 @@ export class LicensingMailService {
 
   async notifyRequesterOfResponse(request: LicenseRequest): Promise<void> {
     const statusLabel =
-      request.status === LicenseRequestStatus.APPROVED
+      request.status === LicensingLifecycle.APPROVED
         ? "approved ✅"
         : "rejected ❌";
 
     await this.sendMail({
       to: `user+${request.requesterId}@platform.local`,
-      subject: `Your License Request Has Been ${request.status === LicenseRequestStatus.APPROVED ? "Approved" : "Rejected"}`,
+      subject: `Your License Request Has Been ${request.status === LicensingLifecycle.APPROVED ? "Approved" : "Rejected"}`,
       body: `
         Your license request (ID: ${request.id}) has been ${statusLabel}.
         ${request.responseMessage ? `\nMessage from artist: ${request.responseMessage}` : ""}

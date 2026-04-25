@@ -238,7 +238,7 @@ export class TracksService {
             .update(Track)
             .set({ filename: null as unknown as string })
             .where('id = :id', { id })
-            .withDeleted()
+            .orWhere('id = :id AND "deletedAt" IS NOT NULL', { id })
             .execute();
         } catch (storageErr) {
           this.logger.warn(

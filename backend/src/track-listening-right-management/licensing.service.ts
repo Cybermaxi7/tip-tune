@@ -104,7 +104,7 @@ export class LicensingService {
       where: {
         trackId: dto.trackId,
         requesterId,
-        status: LicenseRequestStatus.PENDING,
+        status: LicensingLifecycle.PENDING,
       },
     });
 
@@ -126,7 +126,7 @@ export class LicensingService {
     const request = this.licenseRequestRepo.create({
       ...dto,
       requesterId,
-      status: LicenseRequestStatus.PENDING,
+      status: LicensingLifecycle.PENDING,
     });
     const saved = await this.licenseRequestRepo.save(request);
 
