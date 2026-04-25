@@ -1,5 +1,7 @@
 #![no_std]
 
+mod indexes;
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Vec,
 };
@@ -151,6 +153,8 @@ impl ArtistAllowlistContract {
             .persistent()
             .set(&DataKey::Entry(artist.clone(), address.clone()), &entry);
 
+        indexes::add_to_index(&env, &artist, &address);
+
         env.events().publish(
             (symbol_short!("allowlst"), symbol_short!("added")),
             (artist, address),
@@ -174,6 +178,8 @@ impl ArtistAllowlistContract {
         env.storage()
             .persistent()
             .remove(&DataKey::Entry(artist.clone(), address.clone()));
+
+        indexes::remove_from_index(&env, &artist, &address);
 
         env.events().publish(
             (symbol_short!("allowlst"), symbol_short!("removed")),
@@ -278,6 +284,8 @@ impl ArtistAllowlistContract {
                 .persistent()
                 .set(&DataKey::Entry(artist.clone(), address.clone()), &entry);
 
+            indexes::add_to_index(&env, &artist, &address);
+
             env.events().publish(
                 (symbol_short!("allowlst"), symbol_short!("batch")),
                 (artist.clone(), address.clone()),
@@ -317,6 +325,8 @@ impl ArtistAllowlistContract {
                 .persistent()
                 .remove(&DataKey::Entry(artist.clone(), address.clone()));
 
+            indexes::remove_from_index(&env, &artist, &address);
+
             env.events().publish(
                 (symbol_short!("allowlst"), symbol_short!("brem")),
                 (artist.clone(), address.clone()),
@@ -333,6 +343,17 @@ impl ArtistAllowlistContract {
             .persistent()
             .get(&DataKey::TokenGate(artist))
             .ok_or(Error::TokenGateNotFound)
+    }
+
+    /// Return a page of allowlist entries for an artist.
+    /// page is zero-based; page_size must be 1–100.
+    pub fn list_allowlist(env: Env, artist: Address, page: u32, page_size: u32) -> Vec<Address> {
+        indexes::get_page(&env, &artist, page, page_size)
+    }
+
+    /// Return the total number of addresses on an artist's allowlist.
+    pub fn get_allowlist_count(env: Env, artist: Address) -> u32 {
+        indexes::get_count(&env, &artist)
     }
 }
 
