@@ -1,5 +1,17 @@
-import { IsString, IsNotEmpty, IsOptional, IsUUID, MaxLength } from 'class-validator';
-import { SanitiseAsPlainText } from '../common/utils/sanitise.util';
+import { Type } from "class-transformer";
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator";
+import { SanitiseAsPlainText } from "../common/utils/sanitise.util";
+import { Comment } from "./comment.entity";
 
 export class CreateCommentDto {
   @IsUUID()
@@ -25,10 +37,40 @@ export class UpdateCommentDto {
   content: string;
 }
 
+export enum CommentSortMode {
+  NEWEST = "newest",
+  MOST_LIKED = "most-liked",
+}
+
 export class PaginationQueryDto {
   @IsOptional()
-  page?: number = 1;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
 
   @IsOptional()
-  limit?: number = 20;
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @IsEnum(CommentSortMode)
+  sort?: CommentSortMode = CommentSortMode.NEWEST;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  replyLimit?: number = 3;
+}
+
+export interface CommentFeedResponse {
+  comments: Comment[];
+  limit: number;
+  replyLimit: number;
+  sort: CommentSortMode;
+  nextCursor: string | null;
+  hasMore: boolean;
 }

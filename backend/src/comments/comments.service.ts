@@ -1,31 +1,45 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
-  BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import {
+  DataSource,
+  DeleteResult,
+  In,
+  InsertResult,
+  Repository,
+} from "typeorm";
+import { BlocksService } from "../blocks/blocks.service";
+import {
+  CommentFeedResponse,
+  CommentSortMode,
+  CreateCommentDto,
+  PaginationQueryDto,
+  UpdateCommentDto,
+} from "./comment.dto";
 import { Comment } from "./comment.entity";
 import { CommentLike } from "./comment-like.entity";
-import {
-  CreateCommentDto,
-  UpdateCommentDto,
-  PaginationQueryDto,
-} from "./comment.dto";
-import { PaginatedResponse } from '../common/dto/paginated-response.dto';
-import { paginate } from '../common/helpers/paginate.helper';
-import { BlocksService } from "../blocks/blocks.service";
+import { CommentQueryBuilder } from "./comment-query.builder";
+
+const COMMENT_DELETED_PLACEHOLDER = "[deleted]";
 
 @Injectable()
 export class CommentsService {
+  private readonly commentQueryBuilder: CommentQueryBuilder;
+
   constructor(
     @InjectRepository(Comment)
-    private commentRepository: Repository<Comment>,
+    private readonly commentRepository: Repository<Comment>,
     @InjectRepository(CommentLike)
-    private commentLikeRepository: Repository<CommentLike>,
+    private readonly commentLikeRepository: Repository<CommentLike>,
     private readonly blocksService: BlocksService,
-  ) {}
+    private readonly dataSource: DataSource,
+  ) {
+    this.commentQueryBuilder = new CommentQueryBuilder(this.commentRepository);
+  }
 
   async create(
     createCommentDto: CreateCommentDto,
@@ -33,7 +47,6 @@ export class CommentsService {
   ): Promise<Comment> {
     const { trackId, content, parentCommentId } = createCommentDto;
 
-    // If it's a reply, validate parent comment exists and check nesting level
     if (parentCommentId) {
       const parentComment = await this.commentRepository.findOne({
         where: { id: parentCommentId },
@@ -44,7 +57,6 @@ export class CommentsService {
         throw new NotFoundException("Parent comment not found");
       }
 
-      // Check if parent is already a reply (enforce 2-level limit)
       if (parentComment.parentCommentId) {
         throw new BadRequestException(
           "Cannot reply to a reply. Maximum nesting level is 2.",
@@ -57,92 +69,107 @@ export class CommentsService {
       userId,
       content,
       parentCommentId: parentCommentId || null,
+      deletedAt: null,
     });
 
-    return await this.commentRepository.save(comment);
+    return this.commentRepository.save(comment);
   }
 
   async findByTrack(
     trackId: string,
     query: PaginationQueryDto,
     userId?: string,
-  ): Promise<{
-    comments: Comment[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 20;
-    const skip = (page - 1) * limit;
+  ): Promise<CommentFeedResponse> {
+    const limit = this.normalizeLimit(query.limit);
+    const replyLimit = this.normalizeReplyLimit(query.replyLimit);
+    const sort = query.sort ?? CommentSortMode.NEWEST;
+    const blockedUserIds = userId
+      ? await this.blocksService.getBlockedUserIds(userId)
+      : [];
 
-    // Get blocked user IDs to filter out their comments (if viewing as artist)
-    let blockedUserIds: string[] = [];
-    if (userId) {
-      blockedUserIds = await this.blocksService.getBlockedUserIds(userId);
-    }
+    const topLevelQuery = this.commentQueryBuilder.buildTopLevelCommentsQuery({
+      trackId,
+      limit: limit + 1,
+      sort,
+      cursor: query.cursor,
+      blockedUserIds,
+    });
 
-    // Build query to get top-level comments, excluding blocked users
-    const queryBuilder = this.commentRepository
-      .createQueryBuilder("comment")
+    topLevelQuery
       .leftJoinAndSelect("comment.user", "user")
-      .leftJoinAndSelect("comment.replies", "replies")
-      .leftJoinAndSelect("replies.user", "replyUser")
-      .leftJoinAndSelect("comment.likes", "likes")
-      .where("comment.trackId = :trackId", { trackId })
-      .andWhere("comment.parentCommentId IS NULL")
-      .orderBy("comment.createdAt", "DESC")
-      .addOrderBy("replies.createdAt", "ASC")
-      .skip(skip)
-      .take(limit);
+      .loadRelationCountAndMap(
+        "comment.replyCount",
+        "comment.replies",
+        "replyCount",
+        (replyCountQb) => {
+          if (blockedUserIds.length > 0) {
+            replyCountQb.andWhere(
+              "replyCount.userId NOT IN (:...blockedUserIds)",
+              {
+                blockedUserIds,
+              },
+            );
+          }
 
-    // Exclude comments from blocked users
-    if (blockedUserIds.length > 0) {
-      queryBuilder.andWhere("comment.userId NOT IN (:...blockedUserIds)", {
-        blockedUserIds,
-      });
-    }
+          return replyCountQb;
+        },
+      );
 
-    const [comments, total] = await queryBuilder.getManyAndCount();
-
-    // Filter out replies from blocked users
-    const filteredComments = comments.map((comment) => ({
-      ...comment,
-      replies:
-        comment.replies?.filter(
-          (reply) => !blockedUserIds.includes(reply.userId),
-        ) || [],
-    })) as Comment[];
-
-    // Add userLiked flag if userId is provided
-    const commentsWithLikeStatus = await this.addUserLikedStatus(
-      filteredComments,
-      userId,
+    const topLevelComments = await topLevelQuery.getMany();
+    const hasMore = topLevelComments.length > limit;
+    const pageComments = hasMore
+      ? topLevelComments.slice(0, limit)
+      : topLevelComments;
+    const repliesByParentId = await this.loadBoundedReplies(
+      pageComments.map((comment) => comment.id),
+      replyLimit,
+      blockedUserIds,
     );
 
+    const commentsWithReplies = pageComments.map((comment) => ({
+      ...comment,
+      replies: repliesByParentId.get(comment.id) || [],
+    })) as Comment[];
+    const commentsWithLikeStatus = await this.addUserLikedStatus(
+      commentsWithReplies,
+      userId,
+    );
+    const visibleComments = commentsWithLikeStatus.map((comment) =>
+      this.presentComment(comment),
+    );
+    const lastVisibleComment = visibleComments[visibleComments.length - 1];
+
     return {
-      comments: commentsWithLikeStatus,
-      total,
-      page,
+      comments: visibleComments,
       limit,
+      replyLimit,
+      sort,
+      nextCursor:
+        hasMore && lastVisibleComment
+          ? this.commentQueryBuilder.encodeCursor(lastVisibleComment, sort)
+          : null,
+      hasMore,
     };
   }
 
   async findOne(id: string, userId?: string): Promise<Comment> {
     const comment = await this.commentRepository.findOne({
       where: { id },
-      relations: ["user", "replies", "replies.user", "likes"],
+      relations: ["user", "replies", "replies.user"],
     });
 
     if (!comment) {
       throw new NotFoundException("Comment not found");
     }
 
+    comment.replies = this.sortReplies(comment.replies || []);
+    comment.replyCount = comment.replies.length;
+
     const [commentWithStatus] = await this.addUserLikedStatus(
       [comment],
       userId,
     );
-    return commentWithStatus;
+    return this.presentComment(commentWithStatus);
   }
 
   async update(
@@ -160,10 +187,14 @@ export class CommentsService {
       throw new ForbiddenException("You can only edit your own comments");
     }
 
+    if (comment.deletedAt) {
+      throw new BadRequestException("Deleted comments cannot be edited");
+    }
+
     comment.content = updateCommentDto.content;
     comment.isEdited = true;
 
-    return await this.commentRepository.save(comment);
+    return this.commentRepository.save(comment);
   }
 
   async delete(id: string, userId: string): Promise<void> {
@@ -177,39 +208,71 @@ export class CommentsService {
       throw new ForbiddenException("You can only delete your own comments");
     }
 
-    await this.commentRepository.remove(comment);
+    if (comment.deletedAt) {
+      return;
+    }
+
+    comment.deletedAt = new Date();
+    comment.content = COMMENT_DELETED_PLACEHOLDER;
+    comment.isEdited = false;
+    await this.commentRepository.save(comment);
   }
 
   async likeComment(commentId: string, userId: string): Promise<Comment> {
-    const comment = await this.commentRepository.findOne({
-      where: { id: commentId },
+    await this.ensureCommentExists(commentId);
+
+    await this.dataSource.transaction(async (manager) => {
+      const insertResult = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(CommentLike)
+        .values({ commentId, userId })
+        .orIgnore()
+        .execute();
+
+      if (!this.didAffectRows(insertResult)) {
+        return;
+      }
+
+      await manager
+        .createQueryBuilder()
+        .update(Comment)
+        .set({ likesCount: () => '"likes_count" + 1' })
+        .where("id = :commentId", { commentId })
+        .execute();
     });
 
-    if (!comment) {
-      throw new NotFoundException("Comment not found");
-    }
-
-    // Check if already liked
-    const existingLike = await this.commentLikeRepository.findOne({
-      where: { commentId, userId },
-    });
-
-    if (existingLike) {
-      throw new BadRequestException("Comment already liked");
-    }
-
-    // Create like
-    const like = this.commentLikeRepository.create({ commentId, userId });
-    await this.commentLikeRepository.save(like);
-
-    // Increment likes count
-    comment.likesCount += 1;
-    await this.commentRepository.save(comment);
-
-    return await this.findOne(commentId, userId);
+    return this.findOne(commentId, userId);
   }
 
   async unlikeComment(commentId: string, userId: string): Promise<Comment> {
+    await this.ensureCommentExists(commentId);
+
+    await this.dataSource.transaction(async (manager) => {
+      const deleteResult = await manager
+        .createQueryBuilder()
+        .delete()
+        .from(CommentLike)
+        .where("comment_id = :commentId", { commentId })
+        .andWhere("user_id = :userId", { userId })
+        .execute();
+
+      if (!this.didAffectRows(deleteResult)) {
+        return;
+      }
+
+      await manager
+        .createQueryBuilder()
+        .update(Comment)
+        .set({ likesCount: () => 'GREATEST(0, "likes_count" - 1)' })
+        .where("id = :commentId", { commentId })
+        .execute();
+    });
+
+    return this.findOne(commentId, userId);
+  }
+
+  private async ensureCommentExists(commentId: string): Promise<void> {
     const comment = await this.commentRepository.findOne({
       where: { id: commentId },
     });
@@ -217,22 +280,47 @@ export class CommentsService {
     if (!comment) {
       throw new NotFoundException("Comment not found");
     }
+  }
 
-    const like = await this.commentLikeRepository.findOne({
-      where: { commentId, userId },
-    });
-
-    if (!like) {
-      throw new BadRequestException("Comment not liked");
+  private async loadBoundedReplies(
+    parentIds: string[],
+    replyLimit: number,
+    blockedUserIds: string[],
+  ): Promise<Map<string, Comment[]>> {
+    if (parentIds.length === 0 || replyLimit <= 0) {
+      return new Map();
     }
 
-    await this.commentLikeRepository.remove(like);
+    const replyIds = await this.commentQueryBuilder.findBoundedReplyIds({
+      parentIds,
+      replyLimit,
+      blockedUserIds,
+    });
 
-    // Decrement likes count
-    comment.likesCount = Math.max(0, comment.likesCount - 1);
-    await this.commentRepository.save(comment);
+    if (replyIds.length === 0) {
+      return new Map();
+    }
 
-    return await this.findOne(commentId, userId);
+    const replies = await this.commentRepository.find({
+      where: { id: In(replyIds) },
+      relations: ["user"],
+    });
+
+    const sortedReplies = this.sortReplies(replies);
+    const repliesByParentId = new Map<string, Comment[]>();
+
+    for (const reply of sortedReplies) {
+      reply.replyCount = 0;
+      const parentReplies = repliesByParentId.get(reply.parentCommentId || "");
+      if (parentReplies) {
+        parentReplies.push(reply);
+        continue;
+      }
+
+      repliesByParentId.set(reply.parentCommentId || "", [reply]);
+    }
+
+    return repliesByParentId;
   }
 
   private async addUserLikedStatus(
@@ -250,14 +338,19 @@ export class CommentsService {
       })) as Comment[];
     }
 
-    const commentIds = comments.map((c) => c.id);
-    const replyIds = comments.flatMap((c) => c.replies?.map((r) => r.id) || []);
+    const commentIds = comments.map((comment) => comment.id);
+    const replyIds = comments.flatMap(
+      (comment) => comment.replies?.map((reply) => reply.id) || [],
+    );
     const allIds = [...commentIds, ...replyIds];
+
+    if (allIds.length === 0) {
+      return comments;
+    }
 
     const likes = await this.commentLikeRepository.find({
       where: allIds.map((id) => ({ commentId: id, userId })),
     });
-
     const likedCommentIds = new Set(likes.map((like) => like.commentId));
 
     return comments.map((comment) => ({
@@ -268,5 +361,73 @@ export class CommentsService {
         userLiked: likedCommentIds.has(reply.id),
       })),
     })) as Comment[];
+  }
+
+  private presentComment(comment: Comment): Comment {
+    const replies = this.sortReplies(comment.replies || []).map((reply) =>
+      this.presentSingleComment(reply),
+    );
+
+    return this.presentSingleComment({
+      ...comment,
+      replies,
+      replyCount: comment.replyCount ?? replies.length,
+    } as Comment);
+  }
+
+  private presentSingleComment(comment: Comment): Comment {
+    return {
+      ...comment,
+      content: comment.deletedAt
+        ? COMMENT_DELETED_PLACEHOLDER
+        : comment.content,
+      isDeleted: Boolean(comment.deletedAt),
+      isEdited: comment.deletedAt ? false : comment.isEdited,
+      userLiked: comment.userLiked ?? false,
+      replyCount: comment.replyCount ?? 0,
+      replies: comment.replies || [],
+    } as Comment;
+  }
+
+  private sortReplies(replies: Comment[]): Comment[] {
+    return [...replies].sort((left, right) => {
+      const createdAtDelta =
+        new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime();
+
+      if (createdAtDelta !== 0) {
+        return createdAtDelta;
+      }
+
+      return left.id.localeCompare(right.id);
+    });
+  }
+
+  private normalizeLimit(limit?: number): number {
+    return Math.min(Math.max(Number(limit) || 20, 1), 100);
+  }
+
+  private normalizeReplyLimit(replyLimit?: number): number {
+    const normalizedReplyLimit =
+      replyLimit === undefined ? 3 : Number(replyLimit);
+    return Math.min(Math.max(normalizedReplyLimit || 0, 0), 10);
+  }
+
+  private didAffectRows(result: InsertResult | DeleteResult): boolean {
+    const affected = (result as DeleteResult).affected;
+    if (typeof affected === "number") {
+      return affected > 0;
+    }
+
+    if (Array.isArray(result.raw)) {
+      return result.raw.length > 0;
+    }
+
+    if (typeof result.raw?.rowCount === "number") {
+      return result.raw.rowCount > 0;
+    }
+
+    const identifiers = (result as InsertResult).identifiers;
+    return Array.isArray(identifiers) && identifiers.length > 0;
   }
 }
