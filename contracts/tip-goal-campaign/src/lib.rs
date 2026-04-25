@@ -1,5 +1,8 @@
 #![no_std]
 
+mod rent;
+mod indexes;
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
