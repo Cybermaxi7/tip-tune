@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
 import { RecommendationFeedback } from "./entities/recommendation-feedback.entity";
+import { RecommendationCacheService } from "./recommendation-cache.service";
 import { TipStatus } from "../tips/entities/tip.entity";
 
 type RecommendationTrackRow = {
@@ -23,6 +24,7 @@ export class RecommendationsService {
     @InjectRepository(RecommendationFeedback)
     private readonly feedbackRepo: Repository<RecommendationFeedback>,
     private readonly dataSource: DataSource,
+    private readonly cacheService: RecommendationCacheService,
   ) {}
 
   async getTrackRecommendations(
@@ -30,19 +32,33 @@ export class RecommendationsService {
     limit: number = 20,
   ): Promise<any[]> {
     const boundedLimit = Math.max(1, Math.min(limit, 50));
-    const tipCount = await this.getUserTipCount(userId);
 
-    if (tipCount < 3) {
-      return this.getPopularTracks(boundedLimit);
+    const cached = await this.cacheService.getTrackRecommendations(userId, boundedLimit);
+    if (cached) {
+      return cached;
     }
 
-    const collaborative = await this.collaborativeFilter(userId, boundedLimit);
-    const contentBased = await this.contentBasedFilter(userId, boundedLimit);
+    const tipCount = await this.getUserTipCount(userId);
 
-    return this.mergeRecommendations(collaborative, contentBased, boundedLimit);
+    let recommendations: any[];
+    if (tipCount < 3) {
+      recommendations = await this.getPopularTracks(boundedLimit);
+    } else {
+      const collaborative = await this.collaborativeFilter(userId, boundedLimit);
+      const contentBased = await this.contentBasedFilter(userId, boundedLimit);
+      recommendations = this.mergeRecommendations(collaborative, contentBased, boundedLimit);
+    }
+
+    await this.cacheService.setTrackRecommendations(userId, recommendations);
+    return recommendations;
   }
 
   async getArtistRecommendations(userId: string): Promise<any[]> {
+    const cached = await this.cacheService.getArtistRecommendations(userId);
+    if (cached) {
+      return cached;
+    }
+
     const trackRecommendations = await this.getTrackRecommendations(userId, 30);
     const artists = new Map<string, any>();
 
@@ -67,9 +83,12 @@ export class RecommendationsService {
       });
     }
 
-    return [...artists.values()]
+    const recommendations = [...artists.values()]
       .sort((a, b) => b.score - a.score || b.trackCount - a.trackCount)
       .slice(0, 10);
+
+    await this.cacheService.setArtistRecommendations(userId, recommendations);
+    return recommendations;
   }
 
   async recordFeedback(
@@ -77,17 +96,7 @@ export class RecommendationsService {
     trackId: string,
     feedback: "up" | "down",
   ): Promise<RecommendationFeedback> {
-    const existing = await this.feedbackRepo.findOne({
-      where: { userId, trackId },
-    });
-
-    if (existing) {
-      existing.feedback = feedback;
-      return this.feedbackRepo.save(existing);
-    }
-
-    const entry = this.feedbackRepo.create({ userId, trackId, feedback });
-    return this.feedbackRepo.save(entry);
+    return this.cacheService.recordFeedback(userId, trackId, feedback);
   }
 
   private async getUserTipCount(userId: string): Promise<number> {
