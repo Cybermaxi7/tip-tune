@@ -54,7 +54,9 @@ fn test_basic_operations() {
     assert!(client.try_approve(&user1, &user2, &100).is_ok());
     assert_eq!(client.allowance(&user1, &user2), 100);
 
-    assert!(client.try_transfer_from(&user2, &user1, &admin, &50).is_ok());
+    assert!(client
+        .try_transfer_from(&user2, &user1, &admin, &50)
+        .is_ok());
     assert_eq!(client.balance(&user1), 150);
     assert_eq!(client.balance(&admin), 950);
     assert_eq!(client.allowance(&user1, &user2), 50);
@@ -461,4 +463,82 @@ fn test_multiple_operations_panics_when_exceeding_supply_cap() {
     client.mint_reward(&user1, &1000);
 
     client.mint_reward(&user1, &5000);
+}
+
+#[test]
+fn test_admin_handoff_acceptance() {
+    let env = Env::default();
+    let client = register_client(&env);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &1000, &None);
+    client.transfer_admin(&new_admin);
+
+    assert_eq!(client.pending_admin(), Some(new_admin.clone()));
+
+    client.accept_admin(&new_admin);
+
+    assert_eq!(client.admin(), new_admin);
+    assert_eq!(client.pending_admin(), None);
+    client.admin_transfer(&admin, &user, &100);
+    assert_eq!(client.balance(&user), 100);
+}
+
+#[test]
+fn test_accept_admin_rejects_non_pending_account() {
+    let env = Env::default();
+    let client = register_client(&env);
+
+    let admin = Address::generate(&env);
+    let pending = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &1000, &None);
+    client.transfer_admin(&pending);
+
+    assert!(client.try_accept_admin(&other).is_err());
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn test_privileged_action_requires_auth() {
+    let env = Env::default();
+    let client = register_client(&env);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &1000, &None);
+
+    assert!(client.try_set_mint_admin(&Some(user)).is_err());
+}
+
+#[test]
+fn test_role_specific_permissions() {
+    let env = Env::default();
+    let client = register_client(&env);
+
+    let admin = Address::generate(&env);
+    let minter = Address::generate(&env);
+    let pauser = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &1000, &None);
+    client.set_mint_admin(&Some(minter.clone()));
+    client.set_pause_admin(&Some(pauser.clone()));
+
+    assert_eq!(client.mint_admin(), minter);
+    assert_eq!(client.pause_admin(), pauser);
+
+    client.mint_reward(&user, &100);
+    client.pause();
+
+    assert_eq!(client.balance(&user), 100);
+    assert!(client.is_paused());
 }

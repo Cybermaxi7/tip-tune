@@ -24,6 +24,9 @@ pub enum Error {
     EscrowNotFound = 2,
     Overflow = 3,  // Amount overflow in distribution
     Underflow = 4, // Amount underflow in distribution
+    InvalidStatus = 5,
+    ReleaseTooEarly = 6,
+    InvalidRoyaltySplit = 7,
 }
 
 #[contracttype]
@@ -52,6 +55,26 @@ pub enum EscrowStatus {
     Released,
     Refunded,
     Disputed,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TipEvent {
+    pub tip_id: u64,
+    pub sender: Address,
+    pub artist: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DistributionEvent {
+    pub tip_id: u64,
+    pub recipient: Address,
+    pub amount: i128,
+    pub percentage: u32,
+    pub is_artist_remainder: bool,
 }
 
 // #[contracttype]

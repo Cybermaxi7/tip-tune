@@ -1,9 +1,10 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
 use crate::errors::Error;
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
 
 pub mod errors;
+pub mod roles;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,6 +15,9 @@ pub enum DataKey {
     Allowance(Address, Address), // from, spender
     SupplyCap,
     Paused,
+    PendingAdmin,
+    MintAdmin,
+    PauseAdmin,
 }
 
 #[contracttype]
@@ -52,6 +56,20 @@ pub struct PauseEvent {
     pub paused: bool,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoleEvent {
+    pub role: soroban_sdk::Symbol,
+    pub account: Option<Address>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminHandoffEvent {
+    pub current_admin: Address,
+    pub pending_admin: Address,
+}
+
 #[contract]
 pub struct RewardToken;
 
@@ -63,7 +81,12 @@ impl RewardToken {
     /// * `admin` - The admin address with administrative privileges
     /// * `total_supply` - Initial total supply (all minted to admin)
     /// * `supply_cap` - Maximum allowed total supply (None for unlimited, Some for capped)
-    pub fn initialize(env: Env, admin: Address, total_supply: i128, supply_cap: Option<i128>) -> Result<(), Error> {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        total_supply: i128,
+        supply_cap: Option<i128>,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -155,8 +178,7 @@ impl RewardToken {
     /// Not allowed when contract is paused.
     /// Respects supply cap if configured.
     pub fn mint_reward(env: Env, recipient: Address, amount: i128) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+        roles::mint_authority(&env).require_auth();
 
         // Check if contract is paused
         if Self::is_paused(env.clone()) {
@@ -175,7 +197,9 @@ impl RewardToken {
 
         // Check supply cap if configured
         if let Some(cap_entry) = env.storage().instance().get::<_, i128>(&DataKey::SupplyCap) {
-            let new_supply = current_supply.checked_add(amount).ok_or(Error::SupplyOverflow)?;
+            let new_supply = current_supply
+                .checked_add(amount)
+                .ok_or(Error::SupplyOverflow)?;
             if new_supply > cap_entry {
                 return Err(Error::SupplyCapExceeded);
             }
@@ -190,7 +214,9 @@ impl RewardToken {
             .set(&DataKey::Balance(recipient.clone()), &new_recipient_balance);
 
         // Update total supply
-        let new_supply = current_supply.checked_add(amount).ok_or(Error::SupplyOverflow)?;
+        let new_supply = current_supply
+            .checked_add(amount)
+            .ok_or(Error::SupplyOverflow)?;
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_supply);
@@ -231,7 +257,9 @@ impl RewardToken {
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
-        let new_supply = total_supply.checked_sub(amount).ok_or(Error::SupplyUnderflow)?;
+        let new_supply = total_supply
+            .checked_sub(amount)
+            .ok_or(Error::SupplyUnderflow)?;
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_supply);
@@ -279,7 +307,13 @@ impl RewardToken {
     /// Requires authorization from the spender.
     /// Decreases the allowance accordingly.
     /// Not allowed when contract is paused.
-    pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) -> Result<(), Error> {
+    pub fn transfer_from(
+        env: Env,
+        spender: Address,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
         spender.require_auth();
 
         // Check if contract is paused
@@ -306,19 +340,25 @@ impl RewardToken {
         }
 
         // Update allowance
-        let new_allowance = allowance.checked_sub(amount).ok_or(Error::AllowanceUnderflow)?;
+        let new_allowance = allowance
+            .checked_sub(amount)
+            .ok_or(Error::AllowanceUnderflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Allowance(from.clone(), spender), &new_allowance);
 
         // Update balances
-        let new_from_balance = from_balance.checked_sub(amount).ok_or(Error::InsufficientBalance)?;
+        let new_from_balance = from_balance
+            .checked_sub(amount)
+            .ok_or(Error::InsufficientBalance)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(from.clone()), &new_from_balance);
 
         let to_balance = Self::balance(env.clone(), to.clone());
-        let new_to_balance = to_balance.checked_add(amount).ok_or(Error::BalanceOverflow)?;
+        let new_to_balance = to_balance
+            .checked_add(amount)
+            .ok_or(Error::BalanceOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(to.clone()), &new_to_balance);
@@ -340,8 +380,7 @@ impl RewardToken {
     /// Only the admin can call this.
     /// Useful for corrections and operational needs.
     pub fn admin_transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+        roles::admin(&env).require_auth();
 
         if amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -361,7 +400,9 @@ impl RewardToken {
             .set(&DataKey::Balance(from.clone()), &(from_balance - amount));
 
         let to_balance = Self::balance(env.clone(), to.clone());
-        let new_to_balance = to_balance.checked_add(amount).ok_or(Error::BalanceOverflow)?;
+        let new_to_balance = to_balance
+            .checked_add(amount)
+            .ok_or(Error::BalanceOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(to.clone()), &new_to_balance);
@@ -400,8 +441,7 @@ impl RewardToken {
     /// Pause the contract (prevents transfers and mints).
     /// Only the admin can call this.
     pub fn pause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+        roles::pause_authority(&env).require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &true);
 
@@ -413,8 +453,7 @@ impl RewardToken {
     /// Unpause the contract.
     /// Only the admin can call this.
     pub fn unpause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+        roles::pause_authority(&env).require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &false);
 
@@ -429,6 +468,76 @@ impl RewardToken {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    pub fn transfer_admin(env: Env, pending_admin: Address) -> Result<(), Error> {
+        let current_admin = roles::admin(&env);
+        current_admin.require_auth();
+        roles::set_pending_admin(&env, &pending_admin);
+        env.events().publish(
+            (symbol_short!("adm_xfer"),),
+            AdminHandoffEvent {
+                current_admin,
+                pending_admin,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        new_admin.require_auth();
+        let pending_admin = roles::pending_admin(&env).ok_or(Error::NoPendingAdmin)?;
+        if pending_admin != new_admin {
+            return Err(Error::Unauthorized);
+        }
+        roles::set_admin(&env, &new_admin);
+        roles::clear_pending_admin(&env);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("accept")),
+            RoleEvent {
+                role: symbol_short!("admin"),
+                account: Some(new_admin),
+            },
+        );
+        Ok(())
+    }
+
+    pub fn set_mint_admin(env: Env, mint_admin: Option<Address>) -> Result<(), Error> {
+        roles::admin(&env).require_auth();
+        roles::set_mint_admin(&env, mint_admin.clone());
+        env.events().publish(
+            (symbol_short!("role"), symbol_short!("mint")),
+            RoleEvent {
+                role: symbol_short!("mint"),
+                account: mint_admin,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn set_pause_admin(env: Env, pause_admin: Option<Address>) -> Result<(), Error> {
+        roles::admin(&env).require_auth();
+        roles::set_pause_admin(&env, pause_admin.clone());
+        env.events().publish(
+            (symbol_short!("role"), symbol_short!("pause")),
+            RoleEvent {
+                role: symbol_short!("pause"),
+                account: pause_admin,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn pending_admin(env: Env) -> Option<Address> {
+        roles::pending_admin(&env)
+    }
+
+    pub fn mint_admin(env: Env) -> Address {
+        roles::mint_authority(&env)
+    }
+
+    pub fn pause_admin(env: Env) -> Address {
+        roles::pause_authority(&env)
     }
 }
 
