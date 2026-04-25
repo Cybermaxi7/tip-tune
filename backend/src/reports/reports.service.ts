@@ -4,8 +4,11 @@ import { Repository } from 'typeorm';
 import { Report, ReportStatus, ReportAction, ReportEntityType, ReportPriority } from './entities/report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportStatusDto } from './dto/update-report-status.dto';
+import { ReportQueryDto } from './dto/report-query.dto';
 import { User, UserStatus } from '../users/entities/user.entity';
 import { Track } from '../tracks/entities/track.entity';
+import { ReportEnforcementService } from './report-enforcement.service';
+import { AdminAuditLog } from '../admin/entities/admin-audit-log.entity';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Filter = require('bad-words');
 
@@ -20,6 +23,9 @@ export class ReportsService {
     private usersRepository: Repository<User>,
     @InjectRepository(Track)
     private tracksRepository: Repository<Track>,
+    @InjectRepository(AdminAuditLog)
+    private auditLogRepository: Repository<AdminAuditLog>,
+    private enforcementService: ReportEnforcementService,
   ) {
     this.filter = new Filter();
   }
@@ -32,20 +38,28 @@ export class ReportsService {
     return this.reportsRepository.save(report);
   }
 
-  async findAll(query: any): Promise<Report[]> {
-    const { status, entityType, priority, assignedToId, escalated } = query;
-    const where: any = {};
-    if (status) where.status = status;
-    if (entityType) where.entityType = entityType;
-    if (priority) where.priority = priority;
-    if (assignedToId) where.assignedToId = assignedToId;
-    if (escalated !== undefined) where.escalated = escalated === 'true' || escalated === true;
+  async findAll(
+    query: ReportQueryDto,
+  ): Promise<{ data: Report[]; total: number; limit: number; offset: number }> {
+    const limit = query.limit || 20;
+    const offset = query.offset || 0;
 
-    return this.reportsRepository.find({
+    const where: any = {};
+    if (query.status) where.status = query.status;
+    if (query.entityType) where.entityType = query.entityType;
+    if (query.priority) where.priority = query.priority;
+    if (query.assignedToId) where.assignedToId = query.assignedToId;
+    if (query.escalated !== undefined) where.escalated = query.escalated;
+
+    const [data, total] = await this.reportsRepository.findAndCount({
       where,
       relations: ['reportedBy', 'reviewedBy', 'assignedTo'],
       order: { createdAt: 'DESC' },
+      skip: offset,
+      take: limit,
     });
+
+    return { data, total, limit, offset };
   }
 
   async findOne(id: string): Promise<Report> {
@@ -87,15 +101,14 @@ export class ReportsService {
       report.resolvedAt = new Date();
     }
 
-    // Handle Actions
-    if (report.action === ReportAction.USER_BANNED) {
-       if (report.entityType === ReportEntityType.USER) {
-          await this.usersRepository.update(report.entityId, { status: UserStatus.BANNED });
-       }
-    } else if (report.action === ReportAction.CONTENT_REMOVED) {
-       if (report.entityType === ReportEntityType.TRACK) {
-         await this.tracksRepository.update(report.entityId, { isPublic: false });
-       }
+    if (updateDto.action && updateDto.action !== ReportAction.NONE) {
+      const ipAddress = '0.0.0.0';
+      await this.enforcementService.applyEnforcement(
+        report,
+        updateDto.action,
+        admin,
+        ipAddress,
+      );
     }
 
     return this.reportsRepository.save(report);

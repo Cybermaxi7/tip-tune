@@ -5,12 +5,13 @@ import {
   Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, LessThanOrEqual, IsNull, Not } from "typeorm";
+import { Repository, LessThanOrEqual, IsNull, Not, Or } from "typeorm";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import {
   ScheduledRelease,
   ReleaseStatus,
 } from "./entities/scheduled-release.entity";
+import { ScheduledReleaseRetryPolicy } from "./scheduled-release-retry.policy";
 import { PreSave } from "./entities/presave.entity";
 import { Track } from "../tracks/entities/track.entity";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -21,8 +22,7 @@ import { DlqService } from "../queue/dlq.service";
 @Injectable()
 export class ScheduledReleasesService {
   private readonly logger = new Logger(ScheduledReleasesService.name);
-  private readonly maxRetries = 3;
-  private readonly retryDelayMs = 5000; // 5 seconds
+  private readonly retryPolicy = new ScheduledReleaseRetryPolicy(3, 5000, 'exponential');
 
   constructor(
     @InjectRepository(ScheduledRelease)
@@ -158,16 +158,22 @@ export class ScheduledReleasesService {
     this.logger.log("Checking for scheduled releases...");
 
     try {
+      const now = new Date();
+
       // Find releases that are due and not yet released or failed
-      const releasesToPublish = await this.scheduledReleaseRepository.find({
-        where: {
-          releaseDate: LessThanOrEqual(new Date()),
-          isReleased: false,
-          status: Not(ReleaseStatus.FAILED_PERMANENTLY),
-        },
-        relations: ["track", "track.artist"],
-        order: { releaseDate: "ASC" },
-      });
+      const releasesToPublish = await this.scheduledReleaseRepository
+        .createQueryBuilder("sr")
+        .leftJoinAndSelect("sr.track", "track")
+        .leftJoinAndSelect("track.artist", "artist")
+        .where("sr.releaseDate <= :now", { now })
+        .andWhere("sr.isReleased = :isReleased", { isReleased: false })
+        .andWhere("sr.status != :status", { status: ReleaseStatus.FAILED_PERMANENTLY })
+        .andWhere(
+          "(sr.nextRetryAt IS NULL OR sr.nextRetryAt <= :now)",
+          { now },
+        )
+        .orderBy("sr.releaseDate", "ASC")
+        .getMany();
 
       if (releasesToPublish.length === 0) {
         this.logger.log("No releases to publish");
@@ -202,10 +208,12 @@ export class ScheduledReleasesService {
       return;
     }
 
-    // Check if we should retry based on attempt count
-    if (release.retryCount >= this.maxRetries) {
+    const attemptNumber = release.retryCount + 1;
+
+    // Check if we should retry based on the policy
+    if (!this.retryPolicy.shouldRetry(release.retryCount, release.nextRetryAt)) {
       this.logger.warn(
-        `Release ${release.id} has exceeded max retries (${this.maxRetries}). Marking as permanently failed.`,
+        `Release ${release.id} has exceeded max retries (${this.retryPolicy.maxRetries}). Marking as permanently failed.`,
       );
       await this.markAsPermanentlyFailed(release);
       return;
@@ -216,7 +224,7 @@ export class ScheduledReleasesService {
       await this.updateReleaseStatus(release.id, ReleaseStatus.PUBLISHING);
 
       this.logger.log(
-        `Processing release ${release.id} (attempt ${release.retryCount + 1}/${this.maxRetries})`,
+        `Processing release ${release.id} (attempt ${attemptNumber}/${this.retryPolicy.maxRetries})`,
       );
 
       await this.releaseTrack(release);
@@ -245,19 +253,20 @@ export class ScheduledReleasesService {
     error: Error,
   ): Promise<void> {
     const retryCount = release.retryCount + 1;
+    const nextRetryTime = this.retryPolicy.getNextRetryTime(retryCount);
 
-    if (retryCount < this.maxRetries) {
+    if (retryCount < this.retryPolicy.maxRetries) {
       // Schedule for retry
       await this.scheduledReleaseRepository.update(release.id, {
         retryCount,
         lastError: error.message,
         lastAttemptAt: new Date(),
         status: ReleaseStatus.PENDING,
-        nextRetryAt: new Date(Date.now() + this.retryDelayMs),
+        nextRetryAt: nextRetryTime,
       });
 
       this.logger.log(
-        `Release ${release.id} scheduled for retry #${retryCount}`,
+        `Release ${release.id} scheduled for retry #${retryCount} at ${nextRetryTime.toISOString()}`,
       );
     } else {
       await this.markAsPermanentlyFailed(release);
@@ -272,7 +281,7 @@ export class ScheduledReleasesService {
   ): Promise<void> {
     await this.scheduledReleaseRepository.update(release.id, {
       status: ReleaseStatus.FAILED_PERMANENTLY,
-      lastError: `Failed after ${this.maxRetries} attempts`,
+      lastError: `Failed after ${this.retryPolicy.maxRetries} attempts`,
       failedAt: new Date(),
     });
 
@@ -281,7 +290,7 @@ export class ScheduledReleasesService {
       jobType: "scheduled_release",
       jobId: release.id,
       payload: { trackId: release.trackId, releaseDate: release.releaseDate },
-      lastError: `Failed after ${this.maxRetries} attempts`,
+      lastError: `Failed after ${this.retryPolicy.maxRetries} attempts`,
       retryCount: release.retryCount,
       recoveryMetadata: {
         statusBefore: release.status,

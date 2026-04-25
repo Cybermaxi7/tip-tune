@@ -89,7 +89,7 @@ export class TrackFileReaperService {
           .update(Track)
           .set({ filename: null as unknown as string })
           .where('id = :id', { id: track.id })
-          .withDeleted()
+          .orWhere('id = :id AND "deletedAt" IS NOT NULL', { id: track.id })
           .execute();
 
         reaped++;
