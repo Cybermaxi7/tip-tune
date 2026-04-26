@@ -1,7 +1,15 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Env, String,
+    Vec,
+};
+
+mod indexes;
+
+use indexes::{
+    add_tip_to_artist_index, get_artist_tip_at_index, get_artist_tip_count, get_tip_id_by_tx_hash,
+    has_tx_hash_index, set_tx_hash_to_tip_id,
 };
 
 #[contracterror]
@@ -13,6 +21,9 @@ pub enum Error {
     TipNotFound = 3,
     Unauthorized = 4,
     DuplicateTipId = 5,
+    DuplicateTxHash = 6,
+    ArtistNotFound = 7,
+    InvalidIndex = 8,
 }
 
 #[contracttype]
@@ -23,6 +34,10 @@ pub enum DataKey {
     TipRecord(String),
     TipCount,
     UserTipCount(Address),
+    // Secondary indexes
+    TxHashToTipId(String),
+    ArtistTipCount(Address),
+    ArtistTipIndex(Address, u32),
 }
 
 #[contracttype]
@@ -42,7 +57,7 @@ pub struct TipVerificationContract;
 
 #[contractimpl]
 impl TipVerificationContract {
-    /// Initialize the contract with an admin address
+    /// Initialize the contract with an admin address.
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("Already initialized");
@@ -58,7 +73,6 @@ impl TipVerificationContract {
             return Err(Error::InvalidAmount);
         }
 
-        // Check if this transaction has already been verified (prevent double-spending)
         if env
             .storage()
             .persistent()
@@ -67,12 +81,10 @@ impl TipVerificationContract {
             return Err(Error::AlreadyVerified);
         }
 
-        // Mark transaction as verified
         env.storage()
             .persistent()
             .set(&DataKey::VerifiedTx(tx_hash.clone()), &true);
 
-        // Emit verification event
         env.events().publish(
             (symbol_short!("tip"), symbol_short!("verified")),
             (tx_hash, expected_amount),
@@ -82,13 +94,14 @@ impl TipVerificationContract {
     }
 
     /// Record a verified tip with full details. Immutable once recorded.
-    /// Prevents duplicate tip IDs.
+    /// Maintains secondary indexes: tx_hash → tip_id and artist → [tip_ids].
     pub fn record_verified_tip(
         env: Env,
         tip_id: String,
         tipper: Address,
         artist: Address,
         amount: i128,
+        tx_hash: String,
     ) -> Result<(), Error> {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -103,23 +116,31 @@ impl TipVerificationContract {
             return Err(Error::DuplicateTipId);
         }
 
-        // Build a tx_hash from tip_id for linking
-        let tx_hash = tip_id.clone();
+        // Prevent duplicate tx_hash across all tips
+        if has_tx_hash_index(&env, &tx_hash) {
+            return Err(Error::DuplicateTxHash);
+        }
 
         let tip = VerifiedTip {
             tip_id: tip_id.clone(),
             tipper: tipper.clone(),
             artist: artist.clone(),
             amount,
-            tx_hash,
+            tx_hash: tx_hash.clone(),
             timestamp: env.ledger().timestamp(),
             verified: true,
         };
 
-        // Store the immutable record
+        // Store the primary record by tip_id
         env.storage()
             .persistent()
             .set(&DataKey::TipRecord(tip_id.clone()), &tip);
+
+        // Secondary index: tx_hash → tip_id
+        set_tx_hash_to_tip_id(&env, &tx_hash, &tip_id);
+
+        // Secondary index: artist → [tip_ids] (append)
+        add_tip_to_artist_index(&env, &artist, &tip_id);
 
         // Increment global tip count
         let count: u64 = env
@@ -131,7 +152,7 @@ impl TipVerificationContract {
             .instance()
             .set(&DataKey::TipCount, &(count + 1));
 
-        // Increment user tip count
+        // Increment per-user tip count
         let user_count: u64 = env
             .storage()
             .instance()
@@ -139,18 +160,17 @@ impl TipVerificationContract {
             .unwrap_or(0);
         env.storage()
             .instance()
-            .set(&DataKey::UserTipCount(tipper.clone()), &(user_count + 1));
+            .set(&DataKey::UserTipCount(tipper), &(user_count + 1));
 
-        // Emit recording event
         env.events().publish(
             (symbol_short!("tip"), symbol_short!("recorded")),
-            tip.clone(),
+            tip,
         );
 
         Ok(())
     }
 
-    /// Check if a transaction has already been verified
+    /// Check if a transaction has already been verified.
     pub fn is_verified(env: Env, tx_hash: String) -> bool {
         env.storage()
             .persistent()
@@ -158,7 +178,7 @@ impl TipVerificationContract {
             .unwrap_or(false)
     }
 
-    /// Get a recorded tip by its ID
+    /// Get a recorded tip by its tip ID.
     pub fn get_tip(env: Env, tip_id: String) -> Result<VerifiedTip, Error> {
         env.storage()
             .persistent()
@@ -166,7 +186,7 @@ impl TipVerificationContract {
             .ok_or(Error::TipNotFound)
     }
 
-    /// Get total number of recorded tips
+    /// Get total number of recorded tips.
     pub fn get_tip_count(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -174,12 +194,61 @@ impl TipVerificationContract {
             .unwrap_or(0)
     }
 
-    /// Get total tips for a specific user
+    /// Get total tips sent by a specific user.
     pub fn get_user_tip_count(env: Env, user: Address) -> u64 {
         env.storage()
             .instance()
             .get(&DataKey::UserTipCount(user))
             .unwrap_or(0)
+    }
+
+    /// Get a verified tip by its transaction hash (secondary index lookup).
+    pub fn get_tip_by_tx_hash(env: Env, tx_hash: String) -> Result<VerifiedTip, Error> {
+        let tip_id = get_tip_id_by_tx_hash(&env, &tx_hash).ok_or(Error::TipNotFound)?;
+        env.storage()
+            .persistent()
+            .get(&DataKey::TipRecord(tip_id))
+            .ok_or(Error::TipNotFound)
+    }
+
+    /// Get the number of tips received by an artist.
+    pub fn get_artist_tip_count(env: Env, artist: Address) -> u32 {
+        get_artist_tip_count(&env, &artist)
+    }
+
+    /// Get a specific tip for an artist by position index.
+    /// Returns InvalidIndex if the index is out of bounds.
+    pub fn get_artist_tip_at_index(
+        env: Env,
+        artist: Address,
+        index: u32,
+    ) -> Result<VerifiedTip, Error> {
+        let tip_id =
+            get_artist_tip_at_index(&env, &artist, index).ok_or(Error::InvalidIndex)?;
+        env.storage()
+            .persistent()
+            .get(&DataKey::TipRecord(tip_id))
+            .ok_or(Error::TipNotFound)
+    }
+
+    /// List all tips received by a specific artist.
+    pub fn get_tips_for_artist(env: Env, artist: Address) -> Vec<VerifiedTip> {
+        let count = get_artist_tip_count(&env, &artist);
+        let mut tips: Vec<VerifiedTip> = vec![&env];
+
+        for i in 0..count {
+            if let Some(tip_id) = get_artist_tip_at_index(&env, &artist, i) {
+                if let Some(tip) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, VerifiedTip>(&DataKey::TipRecord(tip_id))
+                {
+                    tips.push_back(tip);
+                }
+            }
+        }
+
+        tips
     }
 }
 
