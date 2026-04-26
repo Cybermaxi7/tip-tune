@@ -2,6 +2,7 @@
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec};
 
+mod custody;
 mod errors;
 mod events;
 mod indexes;
@@ -73,6 +74,7 @@ impl TipMatchingContract {
         env: Env,
         sponsor: Address,
         artist: Address,
+        token: Address,
         pool_amount: i128,
         match_ratio: u32,
         match_cap_total: i128,
@@ -95,11 +97,14 @@ impl TipMatchingContract {
             return Err(Error::InvalidParameters);
         }
 
+        custody::deposit(&env, &token, &sponsor, pool_amount);
+
         let pool_id = next_pool_id(&env);
         let pool = MatchingPool {
             pool_id: pool_id.clone(),
             sponsor: sponsor.clone(),
             artist: artist.clone(),
+            token,
             pool_amount,
             matched_amount: 0,
             remaining_amount: pool_amount,
@@ -209,6 +214,8 @@ impl TipMatchingContract {
         indexes::set_tipper_matched(&env, &pool_id, &tipper, new_tipper_total);
         indexes::mark_tip_used(&env, &pool_id, &tip_id);
 
+        custody::withdraw(&env, &pool.token, &pool.artist, actual_match);
+
         env.events().publish(
             (symbol_short!("pool"), symbol_short!("match")),
             (pool_id.clone(), tipper.clone(), actual_match),
@@ -241,6 +248,10 @@ impl TipMatchingContract {
         pool.status = PoolStatus::Cancelled;
         pool.refunded_at = env.ledger().timestamp();
         save_pool(&env, &pool);
+
+        if refund > 0 {
+            custody::withdraw(&env, &pool.token, &pool.sponsor, refund);
+        }
 
         events::emit_pool_cancelled(&env, &pool_id, refund);
         Ok(refund)

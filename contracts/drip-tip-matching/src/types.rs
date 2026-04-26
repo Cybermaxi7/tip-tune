@@ -16,6 +16,7 @@ pub struct MatchingPool {
     pub pool_id: String,
     pub sponsor: Address,
     pub artist: Address,
+    pub token: Address,         // Token held in escrow for this pool
     pub pool_amount: i128,      // Sponsor's total contributed amount
     pub matched_amount: i128,   // Total amount already matched
     pub remaining_amount: i128, // Sponsor's unmatched remaining balance
