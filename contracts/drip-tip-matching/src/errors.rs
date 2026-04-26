@@ -16,4 +16,6 @@ pub enum Error {
     MatchWouldExceedCap = 10,
     PoolAlreadyRefunded = 11,
     InvalidCloseStatus = 12,
+    TipperCapExceeded = 13,
+    DuplicateTip = 14,
 }

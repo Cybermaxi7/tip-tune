@@ -1,9 +1,12 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec};
 
+mod custody;
 mod errors;
 mod events;
+mod indexes;
+mod queries;
 mod types;
 
 pub use errors::Error;
@@ -71,9 +74,11 @@ impl TipMatchingContract {
         env: Env,
         sponsor: Address,
         artist: Address,
+        token: Address,
         pool_amount: i128,
         match_ratio: u32,
         match_cap_total: i128,
+        tipper_cap: i128,
         end_time: u64,
     ) -> Result<String, Error> {
         sponsor.require_auth();
@@ -88,17 +93,24 @@ impl TipMatchingContract {
         if match_cap_total < 0 {
             return Err(Error::InvalidMatchCap);
         }
+        if tipper_cap < 0 {
+            return Err(Error::InvalidParameters);
+        }
+
+        custody::deposit(&env, &token, &sponsor, pool_amount);
 
         let pool_id = next_pool_id(&env);
         let pool = MatchingPool {
             pool_id: pool_id.clone(),
-            sponsor,
-            artist,
+            sponsor: sponsor.clone(),
+            artist: artist.clone(),
+            token,
             pool_amount,
             matched_amount: 0,
             remaining_amount: pool_amount,
             match_ratio,
             match_cap_total,
+            tipper_cap,
             start_time: now,
             end_time,
             status: PoolStatus::Active,
@@ -107,6 +119,8 @@ impl TipMatchingContract {
         };
 
         save_pool(&env, &pool);
+        queries::add_to_sponsor_index(&env, &sponsor, &pool_id);
+        queries::add_to_artist_index(&env, &artist, &pool_id);
         events::emit_pool_created(&env, &pool_id);
         Ok(pool_id)
     }
@@ -116,11 +130,16 @@ impl TipMatchingContract {
         pool_id: String,
         tip_amount: i128,
         tipper: Address,
+        tip_id: String,
     ) -> Result<i128, Error> {
         tipper.require_auth();
 
         if tip_amount <= 0 {
             return Err(Error::InvalidParameters);
+        }
+
+        if indexes::is_tip_used(&env, &pool_id, &tip_id) {
+            return Err(Error::DuplicateTip);
         }
 
         let mut pool = load_pool(&env, &pool_id)?;
@@ -164,6 +183,20 @@ impl TipMatchingContract {
             }
         }
 
+        if pool.tipper_cap > 0 {
+            let already_matched = indexes::get_tipper_matched(&env, &pool_id, &tipper);
+            let tipper_remaining = pool
+                .tipper_cap
+                .checked_sub(already_matched)
+                .unwrap_or(0);
+            if tipper_remaining <= 0 {
+                return Err(Error::TipperCapExceeded);
+            }
+            if actual_match > tipper_remaining {
+                actual_match = tipper_remaining;
+            }
+        }
+
         pool.matched_amount = pool
             .matched_amount
             .checked_add(actual_match)
@@ -174,6 +207,14 @@ impl TipMatchingContract {
             .ok_or(Error::InsufficientPoolAmount)?;
         refresh_pool_status(&env, &mut pool);
         save_pool(&env, &pool);
+
+        let new_tipper_total = indexes::get_tipper_matched(&env, &pool_id, &tipper)
+            .checked_add(actual_match)
+            .unwrap_or(actual_match);
+        indexes::set_tipper_matched(&env, &pool_id, &tipper, new_tipper_total);
+        indexes::mark_tip_used(&env, &pool_id, &tip_id);
+
+        custody::withdraw(&env, &pool.token, &pool.artist, actual_match);
 
         env.events().publish(
             (symbol_short!("pool"), symbol_short!("match")),
@@ -208,6 +249,10 @@ impl TipMatchingContract {
         pool.refunded_at = env.ledger().timestamp();
         save_pool(&env, &pool);
 
+        if refund > 0 {
+            custody::withdraw(&env, &pool.token, &pool.sponsor, refund);
+        }
+
         events::emit_pool_cancelled(&env, &pool_id, refund);
         Ok(refund)
     }
@@ -240,5 +285,13 @@ impl TipMatchingContract {
 
     pub fn get_matched_amount(env: Env, pool_id: String) -> Result<i128, Error> {
         Ok(Self::get_pool_status(env, pool_id)?.matched_amount)
+    }
+
+    pub fn list_pools_by_sponsor(env: Env, sponsor: Address) -> Vec<String> {
+        queries::get_pools_by_sponsor(&env, &sponsor)
+    }
+
+    pub fn list_pools_by_artist(env: Env, artist: Address) -> Vec<String> {
+        queries::get_pools_by_artist(&env, &artist)
     }
 }
