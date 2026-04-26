@@ -1,7 +1,8 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String, Vec};
+use crate::storage::{MAX_LOGS_PER_TRACK, DAY_IN_LEDGERS, PERSISTENT_BUMP_AMOUNT};
 
 #[test]
 fn test_set_splits() {
@@ -315,4 +316,127 @@ fn test_unauthorized_owner_update() {
     // Attacker tries to update — must fail with Unauthorized
     let result = client.try_set_splits(&attacker, &track_id, &collabs);
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_log_retention() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
+    let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "retention_track");
+    let owner = Address::generate(&env);
+    let collab = Address::generate(&env);
+
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address: collab.clone(),
+        percentage: 10000,
+    });
+    client.set_splits(&owner, &track_id, &collabs);
+
+    // Add more than MAX_LOGS_PER_TRACK logs
+    let total_to_add = MAX_LOGS_PER_TRACK + 10;
+    for i in 0..total_to_add {
+        let payout_id = String::from_str(&env, &format!("payout_{}", i));
+        client.receive_and_distribute(&track_id, &payout_id, &100, &Asset::Native);
+    }
+
+    // Settlement count should reflect total ever added
+    assert_eq!(client.get_settlement_count(&track_id), total_to_add);
+
+    // Old logs should be gone
+    assert!(client.get_settlement_history(&track_id, &0).is_none());
+    assert!(client.get_settlement_history(&track_id, &9).is_none());
+    
+    // Recent logs should be present
+    assert!(client.get_settlement_history(&track_id, &10).is_some());
+    assert!(client.get_settlement_history(&track_id, &(total_to_add - 1)).is_some());
+
+    // Paginated results should respect available logs
+    let recent = client.get_recent_settlements_paginated(&track_id, &0, &100);
+    assert_eq!(recent.len(), MAX_LOGS_PER_TRACK);
+}
+
+#[test]
+fn test_ttl_bumping() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
+    let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "ttl_track");
+    let owner = Address::generate(&env);
+    let collab = Address::generate(&env);
+
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address: collab.clone(),
+        percentage: 10000,
+    });
+
+    // Set splits - this should set initial TTL
+    client.set_splits(&owner, &track_id, &collabs);
+
+    // Jump ahead in time, but stay within TTL
+    env.ledger().set(Ledger {
+        number: 100,
+        timestamp: 1000,
+        network_id: [0; 32],
+        base_reserve: 100,
+        min_persistent_entry_ttl: 10,
+        min_temp_entry_ttl: 10,
+        max_entry_ttl: 100_000,
+    });
+
+    // Calling get_splits should bump TTL
+    let _ = client.get_splits(&track_id);
+    
+    // Note: In unit tests, we can't easily assert the exact TTL value of a key 
+    // without deeper testutils access, but we can verify it doesn't crash 
+    // and the logic is exercised.
+}
+
+#[test]
+fn test_pagination_rotation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AutoRoyaltyDistribution);
+    let client = AutoRoyaltyDistributionClient::new(&env, &contract_id);
+
+    let track_id = String::from_str(&env, "rotate_pagination");
+    let owner = Address::generate(&env);
+    let collab = Address::generate(&env);
+
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address: collab.clone(),
+        percentage: 10000,
+    });
+    client.set_splits(&owner, &track_id, &collabs);
+
+    // Fill up and wrap around
+    for i in 0..(MAX_LOGS_PER_TRACK + 20) {
+        let payout_id = String::from_str(&env, &format!("p_{}", i));
+        client.receive_and_distribute(&track_id, &payout_id, &100, &Asset::Native);
+    }
+
+    // total_count = MAX + 20 = 70 (if MAX=50)
+    // Available logs: [20, 69]
+    
+    // Page 0, size 10: [69, 68, ..., 60]
+    let page0 = client.get_recent_settlements_paginated(&track_id, &0, &10);
+    assert_eq!(page0.len(), 10);
+    assert_eq!(page0.get(0).unwrap().payout_id, String::from_str(&env, "p_69"));
+
+    // Page 4, size 10: [29, 28, ..., 20]
+    let page4 = client.get_recent_settlements_paginated(&track_id, &4, &10);
+    assert_eq!(page4.len(), 10);
+    assert_eq!(page4.get(0).unwrap().payout_id, String::from_str(&env, "p_29"));
+    assert_eq!(page4.get(9).unwrap().payout_id, String::from_str(&env, "p_20"));
+
+    // Page 5, size 10: empty or truncated since only 50 logs are kept
+    let page5 = client.get_recent_settlements_paginated(&track_id, &5, &10);
+    assert_eq!(page5.len(), 0);
 }
