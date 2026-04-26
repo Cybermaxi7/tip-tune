@@ -4,10 +4,12 @@ pub mod events;
 pub mod indexes;
 pub mod storage;
 pub mod types;
+pub mod billing;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
 use storage::{read_subscription, write_subscription};
 use types::{Error, Subscription, SubscriptionFrequency, SubscriptionStatus};
+use billing::{can_attempt_payment, on_payment_failure, on_payment_success, update_status_for_time};
 
 const WEEK_IN_SECONDS: u64 = 604_800;
 const MONTH_IN_SECONDS: u64 = 2_592_000;
@@ -82,32 +84,82 @@ impl TipSubscriptionContract {
     }
 
     pub fn process_payment(env: Env, subscription_id: String) -> Result<(), Error> {
+        let current_time = env.ledger().timestamp();
         let mut sub =
             read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
 
-        if sub.status != SubscriptionStatus::Active {
+        // Cancelled subscriptions cannot be paid
+        if sub.status == SubscriptionStatus::Cancelled {
             return Err(Error::InvalidStatus);
         }
 
-        let current_time = env.ledger().timestamp();
-        if current_time < sub.next_payment_timestamp {
+        // Update subscription status based on current time (detect overdue/grace transitions)
+        let _status_changed = billing::update_status_for_time(&env, &mut sub, current_time);
+
+        // Check if payment can be attempted
+        if !billing::can_attempt_payment(&sub.status) {
+            // Paused subscriptions cannot be paid
+            return Err(Error::InvalidStatus);
+        }
+
+        // Additional guard: Active subscriptions cannot pay before due date
+        if sub.status == SubscriptionStatus::Active && current_time < sub.next_payment_timestamp {
             return Err(Error::PaymentTooEarly);
         }
 
+        // Attempt token transfer
         let token_client = token::Client::new(&env, &sub.token);
-        token_client.transfer(&sub.subscriber, &sub.artist, &sub.amount);
+        let transfer_result = token_client.transfer(&sub.subscriber, &sub.artist, &sub.amount);
 
-        let duration = match sub.frequency {
-            SubscriptionFrequency::Weekly => WEEK_IN_SECONDS,
-            SubscriptionFrequency::Monthly => MONTH_IN_SECONDS,
-        };
-        sub.next_payment_timestamp = current_time
-            .checked_add(duration)
-            .ok_or(Error::TimestampOverflow)?;
+        if transfer_result.is_ok() {
+            // Payment succeeded: update status to Active and schedule next payment
+            billing::on_payment_success(&mut sub, current_time, &sub.frequency)?;
 
-        write_subscription(&env, &subscription_id, &sub);
+            write_subscription(&env, &subscription_id, &sub);
+            indexes::update_active_subscription(&env, &sub);
 
-        events::payment_processed(&env, subscription_id, sub.amount);
+            events::payment_processed(&env, subscription_id, sub.amount);
+        } else {
+            // Payment failed: update status (GracePeriod -> PastDue)
+            billing::on_payment_failure(&mut sub);
+            write_subscription(&env, &subscription_id, &sub);
+            indexes::update_active_subscription(&env, &sub);
+            events::payment_failed(&env, subscription_id, sub.amount);
+            return Err(Error::PaymentFailed);
+        }
+
+        Ok(())
+    }
+
+        // Update subscription status based on current time (detect overdue/grace transitions)
+        let _status_changed = billing::update_status_for_time(&env, &mut sub, current_time);
+
+        // Check if payment can be attempted
+        if !billing::can_attempt_payment(&sub.status) {
+            // Paused subscriptions cannot be paid
+            return Err(Error::InvalidStatus);
+        }
+
+        // Attempt token transfer
+        let token_client = token::Client::new(&env, &sub.token);
+        let transfer_result = token_client.transfer(&sub.subscriber, &sub.artist, &sub.amount);
+
+        if transfer_result.is_ok() {
+            // Payment succeeded: reset to Active and schedule next payment
+            billing::on_payment_success(&mut sub, current_time, &sub.frequency)?;
+
+            write_subscription(&env, &subscription_id, &sub);
+            indexes::update_active_subscription(&env, &sub);
+
+            events::payment_processed(&env, subscription_id, sub.amount);
+        } else {
+            // Payment failed: update status (GracePeriod -> PastDue)
+            billing::on_payment_failure(&mut sub);
+            write_subscription(&env, &subscription_id, &sub);
+            indexes::update_active_subscription(&env, &sub);
+            events::payment_failed(&env, subscription_id, sub.amount);
+            return Err(Error::PaymentFailed);
+        }
 
         Ok(())
     }
@@ -183,6 +235,17 @@ impl TipSubscriptionContract {
             }
         }
         subscriptions
+    }
+
+    /// Refresh the subscription status based on current time.
+    /// Used to transition into GracePeriod/PastDue automatically.
+    pub fn refresh_subscription_status(env: Env, subscription_id: String) -> Result<(), Error> {
+        let current_time = env.ledger().timestamp();
+        let mut sub = read_subscription(&env, &subscription_id).ok_or(Error::SubscriptionNotFound)?;
+        billing::update_status_for_time(&env, &mut sub, current_time);
+        write_subscription(&env, &subscription_id, &sub);
+        indexes::update_active_subscription(&env, &sub);
+        Ok(())
     }
 }
 
