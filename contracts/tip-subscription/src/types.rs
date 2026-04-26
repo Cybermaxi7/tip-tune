@@ -13,6 +13,8 @@ pub enum SubscriptionStatus {
     Active,
     Paused,
     Cancelled,
+    GracePeriod,
+    PastDue,
 }
 
 #[contracttype]
@@ -39,4 +41,11 @@ pub enum Error {
     Overflow = 6,
     TimestampOverflow = 7,
     DuplicateSubscription = 8,
+    PaymentFailed = 9,
+    InsufficientBalance = 10,
+    GracePeriodExpired = 11,
+    CannotRecoverPastDue = 12,
 }
+
+/// Configurable grace period window in seconds (default: 7 days)
+pub const GRACE_PERIOD_SECONDS: u64 = 604_800; // 7 days
