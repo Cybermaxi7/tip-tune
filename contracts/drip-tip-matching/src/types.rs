@@ -21,6 +21,7 @@ pub struct MatchingPool {
     pub remaining_amount: i128, // Sponsor's unmatched remaining balance
     pub match_ratio: u32,       // 100 = 1:1 match
     pub match_cap_total: i128,  // Maximum total matches allowed (optional cap)
+    pub tipper_cap: i128,       // Per-tipper match ceiling per pool (0 = unlimited)
     pub start_time: u64,
     pub end_time: u64,
     pub status: PoolStatus,

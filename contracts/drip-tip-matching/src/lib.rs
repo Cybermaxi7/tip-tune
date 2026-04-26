@@ -4,6 +4,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Ve
 
 mod errors;
 mod events;
+mod indexes;
 mod queries;
 mod types;
 
@@ -75,6 +76,7 @@ impl TipMatchingContract {
         pool_amount: i128,
         match_ratio: u32,
         match_cap_total: i128,
+        tipper_cap: i128,
         end_time: u64,
     ) -> Result<String, Error> {
         sponsor.require_auth();
@@ -89,6 +91,9 @@ impl TipMatchingContract {
         if match_cap_total < 0 {
             return Err(Error::InvalidMatchCap);
         }
+        if tipper_cap < 0 {
+            return Err(Error::InvalidParameters);
+        }
 
         let pool_id = next_pool_id(&env);
         let pool = MatchingPool {
@@ -100,6 +105,7 @@ impl TipMatchingContract {
             remaining_amount: pool_amount,
             match_ratio,
             match_cap_total,
+            tipper_cap,
             start_time: now,
             end_time,
             status: PoolStatus::Active,
@@ -119,11 +125,16 @@ impl TipMatchingContract {
         pool_id: String,
         tip_amount: i128,
         tipper: Address,
+        tip_id: String,
     ) -> Result<i128, Error> {
         tipper.require_auth();
 
         if tip_amount <= 0 {
             return Err(Error::InvalidParameters);
+        }
+
+        if indexes::is_tip_used(&env, &pool_id, &tip_id) {
+            return Err(Error::DuplicateTip);
         }
 
         let mut pool = load_pool(&env, &pool_id)?;
@@ -167,6 +178,20 @@ impl TipMatchingContract {
             }
         }
 
+        if pool.tipper_cap > 0 {
+            let already_matched = indexes::get_tipper_matched(&env, &pool_id, &tipper);
+            let tipper_remaining = pool
+                .tipper_cap
+                .checked_sub(already_matched)
+                .unwrap_or(0);
+            if tipper_remaining <= 0 {
+                return Err(Error::TipperCapExceeded);
+            }
+            if actual_match > tipper_remaining {
+                actual_match = tipper_remaining;
+            }
+        }
+
         pool.matched_amount = pool
             .matched_amount
             .checked_add(actual_match)
@@ -177,6 +202,12 @@ impl TipMatchingContract {
             .ok_or(Error::InsufficientPoolAmount)?;
         refresh_pool_status(&env, &mut pool);
         save_pool(&env, &pool);
+
+        let new_tipper_total = indexes::get_tipper_matched(&env, &pool_id, &tipper)
+            .checked_add(actual_match)
+            .unwrap_or(actual_match);
+        indexes::set_tipper_matched(&env, &pool_id, &tipper, new_tipper_total);
+        indexes::mark_tip_used(&env, &pool_id, &tip_id);
 
         env.events().publish(
             (symbol_short!("pool"), symbol_short!("match")),
