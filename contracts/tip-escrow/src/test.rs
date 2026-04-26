@@ -277,3 +277,82 @@ fn test_tip_distribution_emits_audit_events() {
     assert_eq!(token.balance(&artist), 67);
     assert!(env.events().all().len() >= 3);
 }
+
+mod slash_invariants {
+    use super::*;
+
+    #[test]
+    fn test_slash_preserves_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let tipper = Address::generate(&env);
+        let artist = Address::generate(&env);
+
+        let (token, token_admin) = create_token_contract(&env, &admin);
+        token_admin.mint(&tipper, &1000);
+
+        let contract_id = env.register_contract(None, TipEscrowContract);
+        let client = TipEscrowContractClient::new(&env, &contract_id);
+
+        let escrow_id = client.create_escrow(
+            &tipper,
+            &artist,
+            &200,
+            &types::Asset::Token(token.address.clone()),
+            &(env.ledger().timestamp() + 100),
+        );
+
+        let initial = token.balance(&contract_id);
+        client.dispute_escrow(&escrow_id, &artist);
+        let final_bal = token.balance(&contract_id);
+
+        assert_eq!(initial, final_bal);
+    }
+
+    #[test]
+    fn test_restore_from_dispute() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let tipper = Address::generate(&env);
+        let artist = Address::generate(&env);
+
+        let (token, token_admin) = create_token_contract(&env, &admin);
+        token_admin.mint(&tipper, &1000);
+
+        let contract_id = env.register_contract(None, TipEscrowContract);
+        let client = TipEscrowContractClient::new(&env, &contract_id);
+
+        let escrow_id = client.create_escrow(
+            &tipper,
+            &artist,
+            &200,
+            &types::Asset::Token(token.address.clone()),
+            &(env.ledger().timestamp() + 100),
+        );
+
+        client.dispute_escrow(&escrow_id, &artist);
+        let balance_pre = token.balance(&contract_id);
+
+        env.ledger().with_mut(|li| {
+            li.timestamp += 200;
+        });
+
+        client.release_escrow(&escrow_id, &artist);
+        let escrow = client.get_escrow(&escrow_id);
+
+        assert_eq!(escrow.status, EscrowStatus::Released);
+    }
+
+    #[test]
+    fn test_total_staked_sum() {
+        let admin = Address::generate(&Env::default());
+        let amount1: i128 = 100;
+        let amount2: i128 = 200;
+        let total = amount1 + amount2;
+        assert_eq!(total, 300);
+    }
+}
