@@ -7,13 +7,23 @@ pub fn save_tip(env: &Env, lock_id: String, tip: &TimeLockTip) {
 
     // Update list of artist tips
     let artist_key = DataKey::ArtistTips(tip.artist.clone());
-    let mut tips: Vec<String> = env
+    let mut artist_tips: Vec<String> = env
         .storage()
         .persistent()
         .get(&artist_key)
         .unwrap_or(Vec::new(env));
-    tips.push_back(lock_id);
-    env.storage().persistent().set(&artist_key, &tips);
+    artist_tips.push_back(lock_id.clone());
+    env.storage().persistent().set(&artist_key, &artist_tips);
+
+    // Update tipper index
+    let tipper_key = DataKey::TipperTips(tip.tipper.clone());
+    let mut tipper_tips: Vec<String> = env
+        .storage()
+        .persistent()
+        .get(&tipper_key)
+        .unwrap_or(Vec::new(env));
+    tipper_tips.push_back(lock_id.clone());
+    env.storage().persistent().set(&tipper_key, &tipper_tips);
 }
 
 pub fn get_tip(env: &Env, lock_id: String) -> Option<TimeLockTip> {
@@ -31,6 +41,14 @@ pub fn get_artist_tips(env: &Env, artist: Address) -> Vec<String> {
     env.storage()
         .persistent()
         .get(&artist_key)
+        .unwrap_or(Vec::new(env))
+}
+
+pub fn get_tipper_tips(env: &Env, tipper: Address) -> Vec<String> {
+    let tipper_key = DataKey::TipperTips(tipper);
+    env.storage()
+        .persistent()
+        .get(&tipper_key)
         .unwrap_or(Vec::new(env))
 }
 
