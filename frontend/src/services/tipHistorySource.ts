@@ -1,5 +1,6 @@
 import type { TipHistoryItem } from '../types';
 import type { TipFiltersState } from '../components/tip-history';
+import { mockTipHistoryData } from '../fixtures/tipHistory.fixtures';
 
 /**
  * Interface for tip history data sources.
@@ -111,4 +112,46 @@ export function paginateItems<T>(
     total,
     hasMore,
   };
+}
+
+/**
+ * Fixture-based implementation of TipHistorySource.
+ * Uses pre-generated mock data for development and testing.
+ */
+export class FixtureTipHistorySource implements TipHistorySource {
+  private sentTips: TipHistoryItem[];
+  private receivedTips: TipHistoryItem[];
+  private giftedTips: TipHistoryItem[];
+
+  constructor() {
+    this.sentTips = mockTipHistoryData.sent;
+    this.receivedTips = mockTipHistoryData.received;
+    this.giftedTips = mockTipHistoryData.gifted;
+  }
+
+  async getSentTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    const filtered = applyFiltersAndSort(this.sentTips, filters);
+    return paginateItems(filtered, page, pageSize);
+  }
+
+  async getReceivedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    const filtered = applyFiltersAndSort(this.receivedTips, filters);
+    return paginateItems(filtered, page, pageSize);
+  }
+
+  async getGiftedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    const filtered = applyFiltersAndSort(this.giftedTips, filters);
+    return paginateItems(filtered, page, pageSize);
+  }
+
+  async getAllTipsForExport(type: 'sent' | 'received' | 'gifted', filters?: TipFiltersState) {
+    const tips = type === 'sent' ? this.sentTips : type === 'received' ? this.receivedTips : this.giftedTips;
+    return filters ? applyFiltersAndSort(tips, filters) : [...tips];
+  }
+
+  async getStats() {
+    const totalSent = this.sentTips.reduce((sum, t) => sum + (t.usdAmount ?? t.amount), 0);
+    const totalReceived = this.receivedTips.reduce((sum, t) => sum + (t.usdAmount ?? t.amount), 0);
+    return { totalSent, totalReceived };
+  }
 }

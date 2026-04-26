@@ -5,99 +5,11 @@ import type { TipFiltersState } from '../components/tip-history';
 import { defaultTipFilters } from '../components/tip-history';
 import type { TipHistoryItem } from '../types';
 import { exportTipHistoryToCSV } from '../utils/formatter';
-import { tipService } from '../services';
+import { ApiTipHistorySource, FixtureTipHistorySource } from '../services/tipService';
+import type { TipHistorySource } from '../services/tipHistorySource';
 import SocialShareModal from '../components/tip/SocialShareModal';
 
 const PAGE_SIZE = 10;
-
-/** Build mock tip history when API is not used (no userId/artistId or API error) */
-function useMockTipHistory(): {
-  sent: TipHistoryItem[];
-  received: TipHistoryItem[];
-  gifted: TipHistoryItem[];
-} {
-  return useMemo(() => {
-    const now = Date.now();
-    const sent: TipHistoryItem[] = Array.from({ length: 18 }, (_, i) => ({
-      id: `sent-${i}`,
-      tipperName: 'You',
-      tipperAvatar: 'https://i.pravatar.cc/150?u=me',
-      amount: Number((Math.random() * 40 + 5).toFixed(2)),
-      message: i % 2 === 0 ? 'Great track!' : '',
-      timestamp: new Date(now - i * 3600000 * 12).toISOString(),
-      trackId: `track-${i % 4}`,
-      artistName: [`Artist A`, `Artist B`, `Artist C`][i % 3],
-      trackTitle: [`Neon Dreams`, `City Lights`, `Sunset Groove`, `Midnight Drive`][i % 4],
-      assetCode: i % 3 === 0 ? 'USDC' : 'XLM',
-      usdAmount: Number((Math.random() * 30 + 5).toFixed(2)),
-      stellarTxHash: `mock-hash-sent-${i}`,
-    }));
-    const received: TipHistoryItem[] = Array.from({ length: 22 }, (_, i) => ({
-      id: `recv-${i}`,
-      tipperName: `Fan #${1000 + i}`,
-      tipperAvatar: `https://i.pravatar.cc/150?u=fan${i}`,
-      amount: Number((Math.random() * 50 + 2).toFixed(2)),
-      message: ['Love it!', '🔥', 'Keep going!'][i % 3],
-      timestamp: new Date(now - i * 3600000 * 8).toISOString(),
-      trackId: `track-${i % 4}`,
-      trackTitle: [`Neon Dreams`, `City Lights`, `Sunset Groove`, `Midnight Drive`][i % 4],
-      assetCode: i % 4 === 0 ? 'USDC' : 'XLM',
-      usdAmount: Number((Math.random() * 40 + 2).toFixed(2)),
-      stellarTxHash: `mock-hash-recv-${i}`,
-    }));
-
-    // Mock gifted tips — 6 given + 4 received as gift
-    const gifted: TipHistoryItem[] = [
-      {
-        id: 'gift-given-0',
-        tipperName: 'Music Lover',
-        tipperAvatar: 'https://i.pravatar.cc/150?u=music_lover',
-        amount: 25,
-        message: 'Amazing music!',
-        timestamp: new Date(now - 3600000 * 5).toISOString(),
-        artistName: 'Aria Nova',
-        trackTitle: 'Neon Dreams',
-        assetCode: 'XLM',
-        usdAmount: 2.75,
-        stellarTxHash: 'mock-hash-gift-0',
-        gift: {
-          id: 'gift-id-0',
-          recipient: { id: 'u2', username: 'music_lover', displayName: 'Music Lover', avatarUrl: 'https://i.pravatar.cc/40?u=music_lover' },
-          giver: { id: 'u1', username: 'me', displayName: 'You', avatarUrl: 'https://i.pravatar.cc/40?u=me' },
-          isAnonymous: false,
-          giftNote: 'Enjoy the tip on me! 🎁',
-          artistMessage: 'Amazing music!',
-          status: 'delivered',
-          createdAt: new Date(now - 3600000 * 5).toISOString(),
-          shareUrl: `/gifts/gift-id-0`,
-        },
-      },
-      {
-        id: 'gift-given-1',
-        tipperName: 'Wave Rider',
-        tipperAvatar: 'https://i.pravatar.cc/150?u=wave_rider',
-        amount: 10,
-        message: 'Keep the vibes going!',
-        timestamp: new Date(now - 3600000 * 48).toISOString(),
-        artistName: 'DJ Bass',
-        trackTitle: 'City Lights',
-        assetCode: 'USDC',
-        usdAmount: 10,
-        stellarTxHash: 'mock-hash-gift-1',
-        gift: {
-          id: 'gift-id-1',
-          recipient: { id: 'u3', username: 'wave_rider', displayName: 'Wave Rider', avatarUrl: 'https://i.pravatar.cc/40?u=wave_rider' },
-          giver: { id: 'u1', username: 'me', displayName: 'You', avatarUrl: 'https://i.pravatar.cc/40?u=me' },
-          isAnonymous: true,
-          giftNote: 'A little surprise gift from me to you!',
-          artistMessage: 'Keep the vibes going!',
-          status: 'delivered',
-          createdAt: new Date(now - 3600000 * 48).toISOString(),
-          shareUrl: `/gifts/gift-id-1`,
-        },
-      },
-      {
-        id: 'gift-received-0',
         tipperName: 'You',
         tipperAvatar: 'https://i.pravatar.cc/150?u=me',
         amount: 50,
