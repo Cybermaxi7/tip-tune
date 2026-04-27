@@ -2,6 +2,13 @@
 
 Soroban smart contracts for TipTune's tip escrow and royalty distribution system.
 
+## Documentation
+
+- [Docs index](../docs/README.md)
+- [Contracts quickstart](QUICKSTART.md)
+- [Contracts testing and linting guide](TESTING.md)
+- [Contributor checklist](CHECKLIST.md)
+
 ## Overview
 
 The **Tip Escrow Contract** enables:
@@ -12,7 +19,7 @@ The **Tip Escrow Contract** enables:
 
 ## Prerequisites
 
-- Rust 1.74+
+- Rust 1.88.0 (matches the contracts CI toolchain)
 - `wasm32-unknown-unknown` target
 - Soroban CLI (for deployment)
 
@@ -53,13 +60,10 @@ cd contracts/tip-escrow
 ### Test
 
 ```bash
-./test.sh
+cargo test -p tip-time-lock
 ```
 
-Or run directly:
-```bash
-cargo test
-```
+For the full command matrix, CI parity commands, and linting guidance, see [TESTING.md](TESTING.md).
 
 ### Deploy to Testnet
 
@@ -181,8 +185,10 @@ The contract includes comprehensive tests:
 
 Run tests:
 ```bash
-cargo test
+cargo test -p tip-time-lock
 ```
+
+For workspace validation and per-package commands, see [TESTING.md](TESTING.md).
 
 ## Integration with Backend
 

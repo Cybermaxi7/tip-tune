@@ -2,6 +2,13 @@
 
 A professional NestJS backend service for audio file upload, storage, and streaming.
 
+## Documentation
+
+- [Docs index](../docs/README.md)
+- [Backend API documentation](api-documentation.md)
+- [Backend testing guide](TESTING.md)
+- [Developer onboarding](dev-onboarding.md)
+
 ## Features
 
 - **Audio File Upload**: Support for MP3, WAV, FLAC formats
@@ -80,6 +87,7 @@ npm run start:prod
 
 Once running, visit `http://localhost:3001/api/docs` for interactive API documentation.
 API routes are versioned under `/api/v1/*` (except health probes and `/api/version`).
+The normalized repository doc for the backend surface lives at [api-documentation.md](api-documentation.md).
 
 ## API Endpoints
 
