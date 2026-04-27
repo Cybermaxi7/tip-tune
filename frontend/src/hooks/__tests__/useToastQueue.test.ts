@@ -3,11 +3,11 @@ import { useToastQueue, QueuedToast } from '../useToastQueue';
 
 describe('useToastQueue', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('should add toasts to queue', () => {
@@ -20,6 +20,10 @@ describe('useToastQueue', () => {
         title: 'New Tip!',
         message: 'You received a tip',
       });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(0);
     });
 
     expect(result.current.toasts.length).toBeGreaterThan(0);
@@ -75,7 +79,7 @@ describe('useToastQueue', () => {
     });
 
     act(() => {
-      jest.advanceTimersByTime(0);
+      vi.advanceTimersByTime(0);
     });
 
     const visible = result.current.toasts;
@@ -98,7 +102,7 @@ describe('useToastQueue', () => {
     }
 
     act(() => {
-      jest.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3000);
     });
 
     expect(result.current.toasts.length).toBeLessThanOrEqual(3);
@@ -117,7 +121,7 @@ describe('useToastQueue', () => {
     });
 
     act(() => {
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
     });
 
     const toastId = result.current.toasts[0]?.id;

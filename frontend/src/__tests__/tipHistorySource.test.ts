@@ -108,10 +108,11 @@ describe('TipHistorySource', () => {
   });
 
   describe('ApiTipHistorySource', () => {
-    const { tipService } = await import('../services/tipService');
+    let tipService: any;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.clearAllMocks();
+      ({ tipService } = await import('../services/tipService'));
     });
 
     it('should fetch sent tips from API', async () => {
