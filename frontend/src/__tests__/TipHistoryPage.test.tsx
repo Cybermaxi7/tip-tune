@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TipHistoryPage } from '../pages/TipHistoryPage';
 import { FixtureTipHistorySource, ApiTipHistorySource } from '../services/tipHistorySource';
 import * as tipHistorySourceModule from '../services/tipHistorySource';
-import * as tipService from '../services/tipService';
 import { exportTipHistoryToCSV } from '../utils/formatter';
 
 // Mock dependencies

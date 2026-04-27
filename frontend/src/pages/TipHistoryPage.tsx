@@ -38,7 +38,6 @@ export const TipHistoryPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [currentItems, setCurrentItems] = useState<TipHistoryItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const [shareTip, setShareTip] = useState<TipHistoryItem | null>(null);
@@ -65,12 +64,11 @@ export const TipHistoryPage: React.FC = () => {
       }
       setCurrentItems(result.items);
       setTotalItems(result.total);
-      setHasMore(result.hasMore);
-    } catch (e: any) {
-      setApiError(e?.message ?? 'Failed to load tip history');
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      setApiError(errorMessage || 'Failed to load tip history');
       setCurrentItems([]);
       setTotalItems(0);
-      setHasMore(false);
     } finally {
       setLoading(false);
     }

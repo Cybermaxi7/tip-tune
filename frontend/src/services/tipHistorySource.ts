@@ -170,7 +170,7 @@ export class ApiTipHistorySource implements TipHistorySource {
     this.artistId = artistId;
   }
 
-  private mapApiTipToHistoryItem = (d: any): TipHistoryItem => ({
+  private mapApiTipToHistoryItem = (d: Record<string, any>): TipHistoryItem => ({
     id: d.id,
     tipperName: d.tipperName ?? d.fromUser?.username ?? 'Unknown',
     tipperAvatar: d.tipperAvatar ?? '',
@@ -225,7 +225,7 @@ export class ApiTipHistorySource implements TipHistorySource {
     }
   }
 
-  async getGiftedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+  async getGiftedTips(_filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, _page = 1, _pageSize = 10) {
     // TODO: Implement gifted tips API endpoint
     // For now, return empty as gifted tips are fixture-only
     return { items: [], total: 0, hasMore: false };

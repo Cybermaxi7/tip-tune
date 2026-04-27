@@ -1,8 +1,5 @@
 import apiClient from '../utils/api';
 import { Tip, TipReceipt, TipStatus, PaginatedResponse } from '../types';
-import type { TipHistoryItem, TipFiltersState } from '../types';
-import type { TipHistorySource } from './tipHistorySource';
-import { applyFiltersAndSort, paginateItems } from './tipHistorySource';
 
 export const tipService = {
   create: async (tipData: {
