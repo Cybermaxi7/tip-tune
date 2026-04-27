@@ -14,6 +14,7 @@ import { ArtistsService } from "./artists.service";
 import { CreateArtistDto } from "./dto/create-artist.dto";
 import { UpdateArtistDto } from "./dto/update-artist.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ArtistOwnerGuard } from "./guards/artist-owner.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse } from "@nestjs/swagger";
 
@@ -81,12 +82,16 @@ export class ArtistsController {
 
   // Admin only
   @Post(":artistId/restore")
+  @UseGuards(ArtistOwnerGuard)
   @ApiOperation({ summary: "Restore a soft-deleted artist (admin only)" })
   @ApiParam({ name: "artistId", description: "Artist UUID", type: "string" })
   @ApiResponse({ status: 200, description: "Artist restored successfully" })
   @ApiResponse({ status: 404, description: "Artist not found" })
+  @ApiResponse({
+    status: 403,
+    description: "Forbidden - Admin privileges required",
+  })
   async restore(@Param("artistId") artistId: string) {
-    // TODO: Add admin guard
     return this.artistsService.restore(artistId);
   }
 }
