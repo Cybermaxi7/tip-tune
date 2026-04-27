@@ -46,6 +46,7 @@ pub struct TimeLockTip {
 pub enum DataKey {
     Tip(String),
     ArtistTips(Address),
+    TipperTips(Address),
     Counter,
     ActorNonce(Address),
 }

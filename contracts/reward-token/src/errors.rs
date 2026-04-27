@@ -22,4 +22,9 @@ pub enum Error {
     AllowanceUnderflow = 16,
     Unauthorized = 17,
     NoPendingAdmin = 18,
+    // Metadata errors
+    EmptyMetadata = 19,
+    // Allowance errors
+    AllowanceDecreaseExceedsCurrent = 20,
+    AllowanceOverflow = 21,
 }
