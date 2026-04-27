@@ -2,9 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { RecommendationFeedback } from "./entities/recommendation-feedback.entity";
+import { TrackRecommendationDto, ArtistRecommendationDto } from "./dto/recommendation-response.dto";
 
-interface CacheEntry {
-  data: any[];
+interface CacheEntry<T> {
+  data: T[];
   expiresAt: number;
 }
 
@@ -12,7 +13,8 @@ interface CacheEntry {
 export class RecommendationCacheService {
   private readonly logger = new Logger(RecommendationCacheService.name);
   private readonly cacheTtlMs = 3600000;
-  private cache = new Map<string, CacheEntry>();
+  private trackCache = new Map<string, CacheEntry<TrackRecommendationDto>>();
+  private artistCache = new Map<string, CacheEntry<ArtistRecommendationDto>>();
 
   constructor(
     @InjectRepository(RecommendationFeedback)
@@ -26,9 +28,9 @@ export class RecommendationCacheService {
   async getTrackRecommendations(
     userId: string,
     limit: number = 20,
-  ): Promise<any[] | null> {
+  ): Promise<TrackRecommendationDto[] | null> {
     const cacheKey = this.getCacheKey(userId, 'track');
-    const entry = this.cache.get(cacheKey);
+    const entry = this.trackCache.get(cacheKey);
 
     if (entry && entry.expiresAt > Date.now()) {
       this.logger.debug(`Track recommendations cache hit for user ${userId}`);
@@ -36,7 +38,7 @@ export class RecommendationCacheService {
     }
 
     if (entry && entry.expiresAt <= Date.now()) {
-      this.cache.delete(cacheKey);
+      this.trackCache.delete(cacheKey);
     }
 
     return null;
@@ -44,19 +46,19 @@ export class RecommendationCacheService {
 
   async setTrackRecommendations(
     userId: string,
-    recommendations: any[],
+    recommendations: TrackRecommendationDto[],
   ): Promise<void> {
     const cacheKey = this.getCacheKey(userId, 'track');
-    this.cache.set(cacheKey, {
+    this.trackCache.set(cacheKey, {
       data: recommendations,
       expiresAt: Date.now() + this.cacheTtlMs,
     });
     this.logger.debug(`Track recommendations cached for user ${userId}`);
   }
 
-  async getArtistRecommendations(userId: string): Promise<any[] | null> {
+  async getArtistRecommendations(userId: string): Promise<ArtistRecommendationDto[] | null> {
     const cacheKey = this.getCacheKey(userId, 'artist');
-    const entry = this.cache.get(cacheKey);
+    const entry = this.artistCache.get(cacheKey);
 
     if (entry && entry.expiresAt > Date.now()) {
       this.logger.debug(`Artist recommendations cache hit for user ${userId}`);
@@ -64,7 +66,7 @@ export class RecommendationCacheService {
     }
 
     if (entry && entry.expiresAt <= Date.now()) {
-      this.cache.delete(cacheKey);
+      this.artistCache.delete(cacheKey);
     }
 
     return null;
@@ -72,10 +74,10 @@ export class RecommendationCacheService {
 
   async setArtistRecommendations(
     userId: string,
-    recommendations: any[],
+    recommendations: ArtistRecommendationDto[],
   ): Promise<void> {
     const cacheKey = this.getCacheKey(userId, 'artist');
-    this.cache.set(cacheKey, {
+    this.artistCache.set(cacheKey, {
       data: recommendations,
       expiresAt: Date.now() + this.cacheTtlMs,
     });
@@ -83,8 +85,8 @@ export class RecommendationCacheService {
   }
 
   async invalidateUserCache(userId: string): Promise<void> {
-    this.cache.delete(this.getCacheKey(userId, 'track'));
-    this.cache.delete(this.getCacheKey(userId, 'artist'));
+    this.trackCache.delete(this.getCacheKey(userId, 'track'));
+    this.artistCache.delete(this.getCacheKey(userId, 'artist'));
     this.logger.debug(`Invalidated recommendation cache for user ${userId}`);
   }
 
