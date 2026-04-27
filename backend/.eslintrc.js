@@ -8,7 +8,17 @@ module.exports = {
   plugins: ['@typescript-eslint/eslint-plugin'],
   extends: [
     'plugin:@typescript-eslint/recommended',
-  ],
+  ],/**
+ * Compression Measurement Script
+ * 
+ * This script measures the effectiveness of HTTP response compression
+ * on key API endpoints by comparing response sizes with different
+ * compression algorithms (brotli, gzip, none).
+ * 
+ * Usage: node scripts/measure-compression.js
+ * 
+ * Requirements: Server must be running on the configured port
+ */
   root: true,
   env: {
     node: true,

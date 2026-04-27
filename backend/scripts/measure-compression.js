@@ -197,7 +197,17 @@ async function measureEndpoint(endpoint) {
     results,
   };
 }
-
+/**
+ * Compression Measurement Script
+ * 
+ * This script measures the effectiveness of HTTP response compression
+ * on key API endpoints by comparing response sizes with different
+ * compression algorithms (brotli, gzip, none).
+ * 
+ * Usage: node scripts/measure-compression.js
+ * 
+ * Requirements: Server must be running on the configured port
+ */
 /**
  * Format bytes to human-readable string
  */
