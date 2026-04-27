@@ -11,7 +11,7 @@ export interface TipHistorySource {
   /**
    * Get sent tips with optional filtering and pagination.
    */
-  getSentTips(filters?: TipFiltersState, page?: number, pageSize?: number): Promise<{
+  getSentTips(filters?: Partial<TipFiltersState>, page?: number, pageSize?: number): Promise<{
     items: TipHistoryItem[];
     total: number;
     hasMore: boolean;
@@ -20,7 +20,7 @@ export interface TipHistorySource {
   /**
    * Get received tips with optional filtering and pagination.
    */
-  getReceivedTips(filters?: TipFiltersState, page?: number, pageSize?: number): Promise<{
+  getReceivedTips(filters?: Partial<TipFiltersState>, page?: number, pageSize?: number): Promise<{
     items: TipHistoryItem[];
     total: number;
     hasMore: boolean;
@@ -29,7 +29,7 @@ export interface TipHistorySource {
   /**
    * Get gifted tips with optional filtering and pagination.
    */
-  getGiftedTips(filters?: TipFiltersState, page?: number, pageSize?: number): Promise<{
+  getGiftedTips(filters?: Partial<TipFiltersState>, page?: number, pageSize?: number): Promise<{
     items: TipHistoryItem[];
     total: number;
     hasMore: boolean;
@@ -130,17 +130,17 @@ export class FixtureTipHistorySource implements TipHistorySource {
     this.giftedTips = mockTipHistoryData.gifted;
   }
 
-  async getSentTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+  async getSentTips(filters: Partial<TipFiltersState> = {}, page = 1, pageSize = 10) {
     const filtered = applyFiltersAndSort(this.sentTips, filters);
     return paginateItems(filtered, page, pageSize);
   }
 
-  async getReceivedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+  async getReceivedTips(filters: Partial<TipFiltersState> = {}, page = 1, pageSize = 10) {
     const filtered = applyFiltersAndSort(this.receivedTips, filters);
     return paginateItems(filtered, page, pageSize);
   }
 
-  async getGiftedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+  async getGiftedTips(filters: Partial<TipFiltersState> = {}, page = 1, pageSize = 10) {
     const filtered = applyFiltersAndSort(this.giftedTips, filters);
     return paginateItems(filtered, page, pageSize);
   }
@@ -225,7 +225,7 @@ export class ApiTipHistorySource implements TipHistorySource {
     }
   }
 
-  async getGiftedTips(_filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, _page = 1, _pageSize = 10) {
+  async getGiftedTips(_filters: Partial<TipFiltersState> = {}, _page = 1, _pageSize = 10) {
     // TODO: Implement gifted tips API endpoint
     // For now, return empty as gifted tips are fixture-only
     return { items: [], total: 0, hasMore: false };

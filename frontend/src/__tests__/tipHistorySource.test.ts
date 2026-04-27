@@ -20,21 +20,21 @@ describe('TipHistorySource', () => {
     });
 
     it('should return sent tips with pagination', async () => {
-      const result = await source.getSentTips({} as TipFiltersState, 1, 10);
+      const result = await source.getSentTips({}, 1, 10);
       expect(result.items).toHaveLength(10);
       expect(result.total).toBe(mockTipHistoryData.sent.length);
       expect(result.hasMore).toBe(true);
     });
 
     it('should return received tips with pagination', async () => {
-      const result = await source.getReceivedTips({} as TipFiltersState, 1, 10);
+      const result = await source.getReceivedTips({}, 1, 10);
       expect(result.items).toHaveLength(10);
       expect(result.total).toBe(mockTipHistoryData.received.length);
       expect(result.hasMore).toBe(true);
     });
 
     it('should return gifted tips with pagination', async () => {
-      const result = await source.getGiftedTips({} as TipFiltersState, 1, 10);
+      const result = await source.getGiftedTips({}, 1, 10);
       expect(result.items).toHaveLength(10);
       expect(result.total).toBe(mockTipHistoryData.gifted.length);
       expect(result.hasMore).toBe(false); // Only 10 gifted tips
