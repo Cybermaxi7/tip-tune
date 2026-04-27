@@ -10,6 +10,7 @@ A professional NestJS backend service for audio file upload, storage, and stream
 - **Audio Streaming**: Range request support for audio seeking
 - **Track Management**: CRUD operations for track metadata
 - **Search & Filter**: Search by title, artist, album; filter by genre
+- **Waveform Generation**: Background processing with BullMQ, retry logic, and DLQ support
 - **API Documentation**: Auto-generated Swagger documentation
 - **Database Integration**: PostgreSQL with TypeORM
 - **Comprehensive Testing**: Integration tests for all endpoints
@@ -110,6 +111,12 @@ See `src/search/README.md` for details.
 - `PATCH /api/v1/tracks/:id/play` - Increment play count
 - `DELETE /api/v1/tracks/:id` - Delete track
 
+### Waveform
+
+- `GET /api/v1/tracks/:trackId/waveform` - Get waveform data for a track
+- `POST /api/v1/tracks/:trackId/waveform/regenerate` - Trigger waveform regeneration
+- `GET /api/v1/tracks/:trackId/waveform/status` - Get waveform generation status
+
 ## File Upload
 
 ### Supported Formats
@@ -156,6 +163,16 @@ For a complete list of variables, descriptions, and defaults, see the [Canonical
 src/
 ├── app.module.ts          # Root module
 ├── main.ts                # Application entry point
+├── waveform/              # Waveform generation module
+│   ├── waveform.controller.ts
+│   ├── waveform.service.ts
+│   ├── waveform-generator.service.ts
+│   ├── waveform.processor.ts
+│   ├── waveform.module.ts
+│   ├── entities/
+│   │   └── track-waveform.entity.ts
+│   └── dto/
+│       └── waveform.dto.ts
 ├── storage/               # File storage module
 │   ├── storage.controller.ts
 │   ├── storage.service.ts
