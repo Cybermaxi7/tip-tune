@@ -4,6 +4,13 @@ import { Repository, DataSource } from "typeorm";
 import { RecommendationFeedback } from "./entities/recommendation-feedback.entity";
 import { RecommendationCacheService } from "./recommendation-cache.service";
 import { TipStatus } from "../tips/entities/tip.entity";
+import {
+  TrackRecommendationDto,
+  ArtistRecommendationDto,
+  TrackRecommendationsResponseDto,
+  ArtistRecommendationsResponseDto,
+  RecommendationExplanationDto,
+} from "./dto/recommendation-response.dto";
 
 type RecommendationTrackRow = {
   id: string;
@@ -30,17 +37,17 @@ export class RecommendationsService {
   async getTrackRecommendations(
     userId: string,
     limit: number = 20,
-  ): Promise<any[]> {
+  ): Promise<TrackRecommendationsResponseDto> {
     const boundedLimit = Math.max(1, Math.min(limit, 50));
 
     const cached = await this.cacheService.getTrackRecommendations(userId, boundedLimit);
     if (cached) {
-      return cached;
+      return this.buildTrackRecommendationsResponse(cached);
     }
 
     const tipCount = await this.getUserTipCount(userId);
 
-    let recommendations: any[];
+    let recommendations: TrackRecommendationDto[];
     if (tipCount < 3) {
       recommendations = await this.getPopularTracks(boundedLimit);
     } else {
@@ -50,19 +57,19 @@ export class RecommendationsService {
     }
 
     await this.cacheService.setTrackRecommendations(userId, recommendations);
-    return recommendations;
+    return this.buildTrackRecommendationsResponse(recommendations);
   }
 
-  async getArtistRecommendations(userId: string): Promise<any[]> {
+  async getArtistRecommendations(userId: string): Promise<ArtistRecommendationsResponseDto> {
     const cached = await this.cacheService.getArtistRecommendations(userId);
     if (cached) {
-      return cached;
+      return this.buildArtistRecommendationsResponse(cached);
     }
 
     const trackRecommendations = await this.getTrackRecommendations(userId, 30);
-    const artists = new Map<string, any>();
+    const artists = new Map<string, Omit<ArtistRecommendationDto, 'explanation'>>();
 
-    for (const track of trackRecommendations) {
+    for (const track of trackRecommendations.recommendations) {
       if (!track.artistId) {
         continue;
       }
@@ -76,7 +83,7 @@ export class RecommendationsService {
 
       artists.set(track.artistId, {
         id: track.artistId,
-        artistName: track.artistName,
+        artistName: track.artistName || 'Unknown Artist',
         genre: track.genre,
         score: Number(track.score || 0),
         trackCount: 1,
@@ -85,10 +92,11 @@ export class RecommendationsService {
 
     const recommendations = [...artists.values()]
       .sort((a, b) => b.score - a.score || b.trackCount - a.trackCount)
-      .slice(0, 10);
+      .slice(0, 10)
+      .map((artist) => this.buildArtistRecommendation(artist));
 
     await this.cacheService.setArtistRecommendations(userId, recommendations);
-    return recommendations;
+    return this.buildArtistRecommendationsResponse(recommendations);
   }
 
   async recordFeedback(
@@ -114,7 +122,7 @@ export class RecommendationsService {
   private async collaborativeFilter(
     userId: string,
     limit: number,
-  ): Promise<any[]> {
+  ): Promise<TrackRecommendationDto[]> {
     const result = await this.dataSource.query(
       `WITH user_tracks AS (
          SELECT DISTINCT "trackId"
@@ -172,7 +180,7 @@ export class RecommendationsService {
   private async contentBasedFilter(
     userId: string,
     limit: number,
-  ): Promise<any[]> {
+  ): Promise<TrackRecommendationDto[]> {
     const result = await this.dataSource.query(
       `WITH user_genres AS (
          SELECT DISTINCT tr.genre
@@ -223,7 +231,7 @@ export class RecommendationsService {
     );
   }
 
-  private async getPopularTracks(limit: number): Promise<any[]> {
+  private async getPopularTracks(limit: number): Promise<TrackRecommendationDto[]> {
     const result = await this.dataSource.query(
       `SELECT tr.id,
               tr.title,
@@ -251,10 +259,10 @@ export class RecommendationsService {
   }
 
   private mergeRecommendations(
-    collaborative: any[],
-    contentBased: any[],
+    collaborative: TrackRecommendationDto[],
+    contentBased: TrackRecommendationDto[],
     limit: number,
-  ): any[] {
+  ): TrackRecommendationDto[] {
     const collabCount = Math.ceil(limit * 0.6);
     const contentCount = limit - collabCount;
 
@@ -276,7 +284,9 @@ export class RecommendationsService {
       .slice(0, limit);
   }
 
-  private mapTrackRow(row: RecommendationTrackRow, source: string) {
+  private mapTrackRow(row: RecommendationTrackRow, source: string): TrackRecommendationDto {
+    const sourceType = source === 'content' ? 'content-based' : source as 'popular' | 'collaborative' | 'content-based';
+    
     return {
       id: row.id,
       title: row.title,
@@ -286,7 +296,59 @@ export class RecommendationsService {
       artistId: row.artistId,
       artistName: row.artistName,
       score: Number(row.score || 0),
+      explanation: this.buildExplanation(sourceType, Number(row.score || 0)),
+    };
+  }
+
+  private buildExplanation(
+    source: 'popular' | 'collaborative' | 'content-based',
+    score: number,
+  ): RecommendationExplanationDto {
+    // Normalize confidence based on typical score ranges
+    // Popular/content-based: 0-50 typical, collaborative: 0-20 typical
+    const maxExpectedScore = source === 'collaborative' ? 20 : 50;
+    const normalizedScore = Math.min(score / maxExpectedScore, 1);
+    const confidence = Math.round(normalizedScore * 100);
+
+    const reasons: Record<typeof source, string> = {
+      popular: 'Trending track popular among all users',
+      collaborative: 'Recommended because users with similar taste also enjoyed this track',
+      'content-based': 'Matches your preferred genres and listening patterns',
+    };
+
+    return {
       source,
+      reason: reasons[source],
+      confidence: Math.max(1, Math.min(confidence, 100)), // Ensure 1-100 range
+    };
+  }
+
+  private buildArtistRecommendation(
+    artist: Omit<ArtistRecommendationDto, 'explanation'>,
+  ): ArtistRecommendationDto {
+    return {
+      ...artist,
+      explanation: this.buildExplanation('content-based', artist.score),
+    };
+  }
+
+  private buildTrackRecommendationsResponse(
+    recommendations: TrackRecommendationDto[],
+  ): TrackRecommendationsResponseDto {
+    return {
+      recommendations,
+      total: recommendations.length,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  private buildArtistRecommendationsResponse(
+    recommendations: ArtistRecommendationDto[],
+  ): ArtistRecommendationsResponseDto {
+    return {
+      recommendations,
+      total: recommendations.length,
+      generatedAt: new Date().toISOString(),
     };
   }
 }

@@ -1,8 +1,12 @@
 import { Controller, Get, Post, Body, Query, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RecommendationsService } from "./recommendations.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import {
+  TrackRecommendationsResponseDto,
+  ArtistRecommendationsResponseDto,
+} from "./dto/recommendation-response.dto";
 
 @ApiTags("Recommendations")
 @Controller("recommendations")
@@ -13,13 +17,28 @@ export class RecommendationsController {
 
   @Get("tracks")
   @ApiOperation({ summary: "Get personalized track recommendations" })
-  async getTrackRecommendations(@CurrentUser("userId") userId: string, @Query("limit") limit?: string) {
+  @ApiResponse({
+    status: 200,
+    description: "Returns personalized track recommendations with explanations",
+    type: TrackRecommendationsResponseDto,
+  })
+  async getTrackRecommendations(
+    @CurrentUser("userId") userId: string,
+    @Query("limit") limit?: string,
+  ): Promise<TrackRecommendationsResponseDto> {
     return this.service.getTrackRecommendations(userId, Number(limit) || 20);
   }
 
   @Get("artists")
   @ApiOperation({ summary: "Get artist recommendations" })
-  async getArtistRecommendations(@CurrentUser("userId") userId: string) {
+  @ApiResponse({
+    status: 200,
+    description: "Returns artist recommendations with explanations",
+    type: ArtistRecommendationsResponseDto,
+  })
+  async getArtistRecommendations(
+    @CurrentUser("userId") userId: string,
+  ): Promise<ArtistRecommendationsResponseDto> {
     return this.service.getArtistRecommendations(userId);
   }
 
