@@ -237,9 +237,9 @@ export const TipHistoryPage: React.FC = () => {
                 <TipCard
                   key={tip.id}
                   tip={tip}
-                  variant={activeTab === 'gifts' ? (tip.gift?.recipient.id === 'u1' ? 'received' : 'sent') : activeTab as 'sent' | 'received'}
+                  variant={activeTab === 'gifted' ? (tip.gift?.recipient.id === 'u1' ? 'received' : 'sent') : activeTab as 'sent' | 'received'}
                   giftVariant={
-                    activeTab === 'gifts'
+                    activeTab === 'gifted'
                       ? tip.gift?.recipient.id === 'u1' ? 'received' : 'given'
                       : undefined
                   }
