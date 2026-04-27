@@ -2,6 +2,8 @@
 
 Generates and stores waveform visualization data for uploaded tracks.
 
+> **Note**: This is the canonical waveform implementation. A duplicate module `mount-waveform` existed temporarily during a refactor and was consolidated into this module in April 2026. See `backend/WAVEFORM_ARCHITECTURE.md` for the full history and architecture decision record.
+
 ## Features
 
 - Automatic waveform generation on track upload
@@ -187,3 +189,22 @@ await this.waveformService.generateForTrack(trackId, audioPath, 400); // 400 poi
 **Slow generation:**
 - Reduce data points (e.g., 100 instead of 200)
 - Process in background queue (Bull/BullMQ recommended for production)
+
+## Architecture
+
+For complete architecture details, consolidation history, and ownership information, see:
+
+- **`backend/WAVEFORM_ARCHITECTURE.md`** - Full ADR with decision record, component diagram, and cleanup tasks
+- **`backend/waveform-architecture.md`** - Existing implementation guide (legacy filename)
+
+The waveform module uses:
+- **BullMQ** for durable background job processing with retries
+- **Redis** for queue persistence
+- **`audiowaveform` CLI** for peak amplitude extraction
+- **TypeORM** for status tracking (`TrackWaveform` entity)
+
+## Ownership
+
+- **Module**: `backend/src/waveform/`
+- **Status**: Production, actively maintained
+- **Introduced**: Initially created pre-August 2025, consolidated April 2026

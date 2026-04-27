@@ -3,7 +3,7 @@
 use super::*;
 extern crate std;
 use std::format;
-use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Env, String, Vec};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String, Vec};
 use crate::storage::MAX_LOGS_PER_TRACK;
 
 #[test]
@@ -382,15 +382,13 @@ fn test_ttl_bumping() {
     client.set_splits(&owner, &track_id, &collabs);
 
     // Jump ahead in time, but stay within TTL
-    env.ledger().set(LedgerInfo {
-        number: 100,
-        timestamp: 1000,
-        network_id: [0; 32],
-        base_reserve: 100,
-        min_persistent_entry_ttl: 10,
-        min_temp_entry_ttl: 10,
-        max_entry_ttl: 100_000,
-    });
+    env.ledger().set_sequence_number(100);
+    env.ledger().set_timestamp(1000);
+    env.ledger().set_network_id([0; 32]);
+    env.ledger().set_base_reserve(100);
+    env.ledger().set_min_persistent_entry_ttl(10);
+    env.ledger().set_min_temp_entry_ttl(10);
+    env.ledger().set_max_entry_ttl(100_000);
 
     // Calling get_splits should bump TTL
     let _ = client.get_splits(&track_id);
