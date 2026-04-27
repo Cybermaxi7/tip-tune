@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod queries;
+mod rent;
 mod storage;
 mod types;
 
@@ -77,17 +78,11 @@ impl TimeLockContract {
         tipper.require_auth();
 
         // Replay protection: check and update actor nonce
-        let last_nonce: u64 = env
-            .storage()
-            .instance()
-            .get(&types::DataKey::ActorNonce(tipper.clone()))
-            .unwrap_or(0);
+        let last_nonce = storage::get_actor_nonce(&env, &tipper);
         if nonce <= last_nonce {
             return Err(Error::InvalidNonce);
         }
-        env.storage()
-            .instance()
-            .set(&types::DataKey::ActorNonce(tipper.clone()), &nonce);
+        storage::set_actor_nonce(&env, &tipper, nonce);
 
         if amount <= 0 {
             return Err(Error::InvalidAmount);
@@ -165,17 +160,11 @@ impl TimeLockContract {
         artist.require_auth();
 
         // Replay protection: check and update actor nonce
-        let last_nonce: u64 = env
-            .storage()
-            .instance()
-            .get(&types::DataKey::ActorNonce(artist.clone()))
-            .unwrap_or(0);
+        let last_nonce = storage::get_actor_nonce(&env, &artist);
         if nonce <= last_nonce {
             return Err(Error::InvalidNonce);
         }
-        env.storage()
-            .instance()
-            .set(&types::DataKey::ActorNonce(artist.clone()), &nonce);
+        storage::set_actor_nonce(&env, &artist, nonce);
 
         let mut tip = storage::get_tip(&env, lock_id).ok_or(Error::LockNotFound)?;
 
@@ -228,17 +217,11 @@ impl TimeLockContract {
         tipper.require_auth();
 
         // Replay protection: check and update actor nonce
-        let last_nonce: u64 = env
-            .storage()
-            .instance()
-            .get(&types::DataKey::ActorNonce(tipper.clone()))
-            .unwrap_or(0);
+        let last_nonce = storage::get_actor_nonce(&env, &tipper);
         if nonce <= last_nonce {
             return Err(Error::InvalidNonce);
         }
-        env.storage()
-            .instance()
-            .set(&types::DataKey::ActorNonce(tipper.clone()), &nonce);
+        storage::set_actor_nonce(&env, &tipper, nonce);
 
         let mut tip = storage::get_tip(&env, lock_id).ok_or(Error::LockNotFound)?;
 

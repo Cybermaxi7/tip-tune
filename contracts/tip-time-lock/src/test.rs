@@ -1,7 +1,20 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, token, Address, Env};
+use crate::rent::DAY_IN_LEDGERS;
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, token, Address, Env, Ledger};
+
+fn set_ledger(env: &Env, number: u32, timestamp: u64, max_entry_ttl: u32) {
+    env.ledger().set(Ledger {
+        number,
+        timestamp,
+        network_id: [0; 32],
+        base_reserve: 100,
+        min_persistent_entry_ttl: 10,
+        min_temp_entry_ttl: 10,
+        max_entry_ttl,
+    });
+}
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -561,4 +574,142 @@ fn test_tipper_tip_history_across_transitions() {
     assert_eq!(history_after_claim.len(), 2);
     assert_eq!(history_after_claim.get(0).unwrap().status, TimeLockStatus::Claimed);
     assert_eq!(history_after_claim.get(1).unwrap().status, TimeLockStatus::Locked);
+}
+
+#[test]
+fn test_active_lock_survives_ledger_bump_refresh() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger(&env, 1, 1_000, 220);
+
+    let contract_id = env.register_contract(None, TimeLockContract);
+    let client = TimeLockContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let tipper = Address::generate(&env);
+    let artist = Address::generate(&env);
+
+    let (token, token_admin) = create_token_contract(&env, &admin);
+    token_admin.mint(&tipper, &1_000);
+
+    let unlock_time = env.ledger().timestamp() + 100;
+    let lock_id = client.create_time_lock_tip(
+        &tipper,
+        &artist,
+        &100,
+        &token.address,
+        &unlock_time,
+        &String::from_str(&env, "TTL refresh"),
+        &1,
+    );
+
+    set_ledger(&env, 150, 1_745, 220);
+    let pending = client.get_pending_tips(&artist);
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending.get(0).unwrap().lock_id, lock_id);
+
+    set_ledger(&env, 221, 2_100, 220);
+    client.claim_tip(&lock_id, &artist, &2);
+
+    assert_eq!(token.balance(&artist), 100);
+    assert_eq!(token.balance(&contract_id), 0);
+}
+
+#[test]
+fn test_actor_nonce_refresh_persists_replay_protection() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger(&env, 1, 10_000, 240);
+
+    let contract_id = env.register_contract(None, TimeLockContract);
+    let client = TimeLockContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let tipper = Address::generate(&env);
+    let artist = Address::generate(&env);
+
+    let (token, token_admin) = create_token_contract(&env, &admin);
+    token_admin.mint(&tipper, &2_000);
+
+    let first_unlock = env.ledger().timestamp() + 50;
+    let lock_id = client.create_time_lock_tip(
+        &tipper,
+        &artist,
+        &100,
+        &token.address,
+        &first_unlock,
+        &String::from_str(&env, "Initial nonce"),
+        &1,
+    );
+
+    set_ledger(&env, 180, 11_000, 240);
+    client.claim_tip(&lock_id, &artist, &1);
+
+    let stale_nonce_attempt = client.try_create_time_lock_tip(
+        &tipper,
+        &artist,
+        &100,
+        &token.address,
+        &(env.ledger().timestamp() + 120),
+        &String::from_str(&env, "Stale nonce"),
+        &1,
+    );
+    assert!(stale_nonce_attempt.is_err());
+
+    set_ledger(&env, 241, 11_305, 240);
+    let second_lock_id = client.create_time_lock_tip(
+        &tipper,
+        &artist,
+        &150,
+        &token.address,
+        &(env.ledger().timestamp() + 120),
+        &String::from_str(&env, "Fresh nonce"),
+        &2,
+    );
+
+    assert_ne!(second_lock_id, lock_id);
+    assert_eq!(client.get_tipper_tip_ids(&tipper).len(), 2);
+}
+
+#[test]
+fn test_refundable_history_survives_long_wait_with_refresh() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger(&env, 1, 5_000, 320);
+
+    let contract_id = env.register_contract(None, TimeLockContract);
+    let client = TimeLockContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let tipper = Address::generate(&env);
+    let artist = Address::generate(&env);
+
+    let (token, token_admin) = create_token_contract(&env, &admin);
+    token_admin.mint(&tipper, &1_000);
+
+    let unlock_time = env.ledger().timestamp() + 20;
+    let lock_id = client.create_time_lock_tip(
+        &tipper,
+        &artist,
+        &100,
+        &token.address,
+        &unlock_time,
+        &String::from_str(&env, "Refund wait"),
+        &1,
+    );
+
+    set_ledger(&env, 150, unlock_time + (15 * 24 * 60 * 60), 320);
+    assert_eq!(client.get_tipper_tip_details(&tipper).len(), 1);
+
+    let refund_time = unlock_time + (30 * 24 * 60 * 60);
+    set_ledger(
+        &env,
+        280,
+        refund_time + (DAY_IN_LEDGERS as u64 * 5 / DAY_IN_LEDGERS as u64),
+        320,
+    );
+
+    let refundable = client.get_refundable_locks(&tipper);
+    assert_eq!(refundable.len(), 1);
+    assert_eq!(refundable.get(0).unwrap(), lock_id);
 }

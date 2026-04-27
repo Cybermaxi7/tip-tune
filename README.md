@@ -18,6 +18,16 @@ TipTune is a revolutionary platform that connects music lovers directly with art
 
 ---
 
+## Documentation
+
+Start with the [documentation index](docs/README.md) for the current docs map.
+
+- [Backend docs](backend/README.md)
+- [Contracts docs](contracts/README.md)
+- [Frontend docs](frontend/README.md)
+
+---
+
 ## Features
 
 - **Stream Music** - Listen to tracks from independent artists
