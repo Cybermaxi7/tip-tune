@@ -1,15 +1,19 @@
 #![no_std]
 
 use crate::errors::Error;
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
+pub mod allowance;
 pub mod errors;
+pub mod metadata;
 pub mod roles;
+pub mod storage;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
+    Metadata,
     TotalSupply,
     Balance(Address),
     Allowance(Address, Address), // from, spender
@@ -75,18 +79,17 @@ pub struct RewardToken;
 
 #[contractimpl]
 impl RewardToken {
-    /// Initialize the reward token with admin, total supply, and optional supply cap.
-    ///
-    /// # Arguments
-    /// * `admin` - The admin address with administrative privileges
-    /// * `total_supply` - Initial total supply (all minted to admin)
-    /// * `supply_cap` - Maximum allowed total supply (None for unlimited, Some for capped)
     pub fn initialize(
         env: Env,
         admin: Address,
         total_supply: i128,
         supply_cap: Option<i128>,
+        name: String,
+        symbol: String,
+        decimals: u32,
     ) -> Result<(), Error> {
+        metadata::init_metadata(&env, name, symbol, decimals)?;
+
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -111,9 +114,7 @@ impl RewardToken {
             env.storage().instance().set(&DataKey::SupplyCap, &cap);
         }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(admin.clone()), &total_supply);
+        storage::write_balance(&env, &admin, total_supply);
 
         Ok(())
     }
@@ -137,20 +138,16 @@ impl RewardToken {
             return Err(Error::SelfTransfer);
         }
 
-        let from_balance = Self::balance(env.clone(), from.clone());
+        let from_balance = storage::read_balance(&env, &from);
         if from_balance < amount {
             return Err(Error::InsufficientBalance);
         }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &(from_balance - amount));
+        storage::write_balance(&env, &from, from_balance - amount);
 
-        let to_balance = Self::balance(env.clone(), to.clone());
+        let to_balance = storage::read_balance(&env, &to);
         let new_to_balance = to_balance.checked_add(amount).expect("Balance overflow");
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(to.clone()), &new_to_balance);
+        storage::write_balance(&env, &to, new_to_balance);
 
         // Emit transfer event
         env.events().publish(
@@ -167,10 +164,7 @@ impl RewardToken {
 
     /// Get the balance of an account.
     pub fn balance(env: Env, account: Address) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Balance(account))
-            .unwrap_or(0)
+        storage::read_balance(&env, &account)
     }
 
     /// Mint new reward tokens to an account.
@@ -205,13 +199,11 @@ impl RewardToken {
             }
         }
 
-        let recipient_balance = Self::balance(env.clone(), recipient.clone());
+        let recipient_balance = storage::read_balance(&env, &recipient);
         let new_recipient_balance = recipient_balance
             .checked_add(amount)
             .ok_or(Error::BalanceOverflow)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(recipient.clone()), &new_recipient_balance);
+        storage::write_balance(&env, &recipient, new_recipient_balance);
 
         // Update total supply
         let new_supply = current_supply
@@ -242,14 +234,11 @@ impl RewardToken {
             return Err(Error::InvalidAmount);
         }
 
-        let from_balance = Self::balance(env.clone(), from.clone());
+        let from_balance = storage::read_balance(&env, &from);
         if from_balance < amount {
             return Err(Error::InsufficientBalance);
         }
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &(from_balance - amount));
+        storage::write_balance(&env, &from, from_balance - amount);
 
         // Update total supply
         let total_supply: i128 = env
@@ -288,19 +277,14 @@ impl RewardToken {
             return Err(Error::SelfApprove);
         }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Allowance(from, spender), &amount);
+        storage::write_allowance(&env, &from, &spender, amount);
 
         Ok(())
     }
 
     /// Get the allowance of a spender for a token holder.
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Allowance(from, spender))
-            .unwrap_or(0)
+        storage::read_allowance(&env, &from, &spender)
     }
 
     /// Transfer tokens on behalf of another account.
@@ -329,12 +313,12 @@ impl RewardToken {
             return Err(Error::SelfTransfer);
         }
 
-        let allowance = Self::allowance(env.clone(), from.clone(), spender.clone());
+        let allowance = storage::read_allowance(&env, &from, &spender);
         if allowance < amount {
             return Err(Error::InsufficientAllowance);
         }
 
-        let from_balance = Self::balance(env.clone(), from.clone());
+        let from_balance = storage::read_balance(&env, &from);
         if from_balance < amount {
             return Err(Error::InsufficientBalance);
         }
@@ -343,25 +327,19 @@ impl RewardToken {
         let new_allowance = allowance
             .checked_sub(amount)
             .ok_or(Error::AllowanceUnderflow)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Allowance(from.clone(), spender), &new_allowance);
+        storage::write_allowance(&env, &from, &spender, new_allowance);
 
         // Update balances
         let new_from_balance = from_balance
             .checked_sub(amount)
             .ok_or(Error::InsufficientBalance)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &new_from_balance);
+        storage::write_balance(&env, &from, new_from_balance);
 
-        let to_balance = Self::balance(env.clone(), to.clone());
+        let to_balance = storage::read_balance(&env, &to);
         let new_to_balance = to_balance
             .checked_add(amount)
             .ok_or(Error::BalanceOverflow)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(to.clone()), &new_to_balance);
+        storage::write_balance(&env, &to, new_to_balance);
 
         // Emit transfer event
         env.events().publish(
@@ -390,22 +368,18 @@ impl RewardToken {
             return Err(Error::SelfTransfer);
         }
 
-        let from_balance = Self::balance(env.clone(), from.clone());
+        let from_balance = storage::read_balance(&env, &from);
         if from_balance < amount {
             return Err(Error::InsufficientBalance);
         }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &(from_balance - amount));
-
-        let to_balance = Self::balance(env.clone(), to.clone());
+        let to_balance = storage::read_balance(&env, &to);
         let new_to_balance = to_balance
             .checked_add(amount)
             .ok_or(Error::BalanceOverflow)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Balance(to.clone()), &new_to_balance);
+
+        storage::write_balance(&env, &from, from_balance - amount);
+        storage::write_balance(&env, &to, new_to_balance);
 
         // Emit admin transfer event
         env.events().publish(
@@ -536,8 +510,56 @@ impl RewardToken {
         roles::mint_authority(&env)
     }
 
-    pub fn pause_admin(env: Env) -> Address {
+pub fn pause_admin(env: Env) -> Address {
         roles::pause_authority(&env)
+    }
+
+    /// Get token name.
+    pub fn name(env: Env) -> String {
+        metadata::get_metadata(&env)
+            .map(|m| m.name)
+            .unwrap_or_else(|| String::from_str(&env, ""))
+    }
+
+    /// Get token symbol.
+    pub fn symbol(env: Env) -> String {
+        metadata::get_metadata(&env)
+            .map(|m| m.symbol)
+            .unwrap_or_else(|| String::from_str(&env, ""))
+    }
+
+    /// Get token decimals.
+    pub fn decimals(env: Env) -> u32 {
+        metadata::get_metadata(&env).map(|m| m.decimals).unwrap_or(0)
+    }
+
+    /// Get contract version.
+    pub fn contract_version(env: Env) -> u32 {
+        metadata::get_metadata(&env)
+            .map(|m| m.contract_version)
+            .unwrap_or(0)
+    }
+
+    /// Increase allowance monotonically (safe against race-condition overwrites).
+    pub fn increase_allowance(
+        env: Env,
+        from: Address,
+        spender: Address,
+        amount: i128,
+    ) -> Result<i128, Error> {
+        from.require_auth();
+        allowance::increase_allowance(&env, &from, &spender, amount)
+    }
+
+    /// Decrease allowance monotonically (safe against race-condition overwrites).
+    pub fn decrease_allowance(
+        env: Env,
+        from: Address,
+        spender: Address,
+        amount: i128,
+    ) -> Result<i128, Error> {
+        from.require_auth();
+        allowance::decrease_allowance(&env, &from, &spender, amount)
     }
 }
 
