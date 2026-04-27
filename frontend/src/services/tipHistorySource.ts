@@ -54,7 +54,7 @@ export interface TipHistorySource {
  */
 export function applyFiltersAndSort(
   items: TipHistoryItem[],
-  filters: TipFiltersState
+  filters: Partial<TipFiltersState> = {}
 ): TipHistoryItem[] {
   let result = [...items];
 
@@ -63,7 +63,7 @@ export function applyFiltersAndSort(
   const amountMin = filters.amountMin ? Number(filters.amountMin) : null;
   const amountMax = filters.amountMax ? Number(filters.amountMax) : null;
   const q = (filters.searchQuery ?? '').trim().toLowerCase();
-  const asset = filters.assetType;
+  const asset = filters.assetType ?? 'all';
 
   result = result.filter((tip) => {
     const t = new Date(tip.timestamp).getTime();
@@ -82,7 +82,7 @@ export function applyFiltersAndSort(
     return true;
   });
 
-  const sort = filters.sort;
+  const sort = filters.sort ?? 'newest';
   result.sort((a, b) => {
     if (sort === 'newest')
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
