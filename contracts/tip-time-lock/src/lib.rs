@@ -1,6 +1,7 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
+mod queries;
 mod storage;
 mod types;
 
@@ -299,5 +300,21 @@ impl TimeLockContract {
             }
         }
         pending
+    }
+
+    /// Get all time-lock tip IDs created by a tipper.
+    pub fn get_tipper_tip_ids(env: Env, tipper: Address) -> Vec<String> {
+        queries::get_tipper_tips(env, tipper)
+    }
+
+    /// Get full tip details for all locks created by a tipper.
+    pub fn get_tipper_tip_details(env: Env, tipper: Address) -> Vec<TimeLockTip> {
+        queries::get_tipper_tip_details(env, tipper)
+    }
+
+    /// Get all refund-eligible lock IDs for a tipper.
+    /// Requires ledger timestamp to be past unlock_time + 30 days.
+    pub fn get_refundable_locks(env: Env, tipper: Address) -> Vec<String> {
+        queries::get_refundable_locks(env, tipper)
     }
 }

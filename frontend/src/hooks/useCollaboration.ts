@@ -1,128 +1,164 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
-import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
-import { v4 as uuidv4 } from 'uuid'
+import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  createCollaborationProvider,
+  CollaborationProvider,
+  Collaborator,
+  ProviderConfig,
+} from "../collaboration/collaborationProvider";
 
-type Track = {
-  id: string
-  title: string
-  artist?: string
+
+
+export interface UseCollaborationOptions {
+  roomId: string;
+  userName: string;
+  userColor?: string;
 }
 
-type Activity = {
-  id: string
-  userId: string
-  userName?: string
-  action: string
-  track?: Track
-  ts: number
+export interface UseCollaborationReturn {
+  /** Ordered list of track IDs in the shared playlist */
+  trackIds: string[];
+
+  /** Who else is currently in the session */
+  collaborators: Collaborator[];
+
+  /** Connection health */
+  connectionStatus: CollaborationProvider["status"];
+
+  /** Add a track to the end of the shared playlist */
+  addTrack: (trackId: string) => void;
+
+  /** Remove a track by index */
+  removeTrack: (index: number) => void;
+
+  /** Move a track from one index to another */
+  moveTrack: (fromIndex: number, toIndex: number) => void;
+
+  /** Whether this hook has finished setting up */
+  isReady: boolean;
 }
 
-export function useCollaboration(playlistId: string, userName = 'Anonymous') {
-  const [tracks, setTracks] = useState<Track[]>([])
-  const [activities, setActivities] = useState<Activity[]>([])
-  const [collaborators, setCollaborators] = useState<any[]>([])
 
-  const clientId = useMemo(() => uuidv4(), [])
-  const docRef = useRef<Y.Doc | null>(null)
-  const providerRef = useRef<WebsocketProvider | null>(null)
 
+export function useCollaboration({
+  roomId,
+  userName,
+  userColor,
+}: UseCollaborationOptions): UseCollaborationReturn {
+  const providerRef = useRef<CollaborationProvider | null>(null);
+
+  const [trackIds, setTrackIds] = useState<string[]>([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [connectionStatus, setConnectionStatus] =
+    useState<CollaborationProvider["status"]>("connecting");
+  const [isReady, setIsReady] = useState(false);
+
+  // ----------------------------------------------------------
+  // Boot: create provider, wire up observers
+  // ----------------------------------------------------------
   useEffect(() => {
-    const doc = new Y.Doc()
-    docRef.current = doc
+    if (!roomId || !userName) return;
 
-    const wsUrl = (import.meta.env.VITE_YJS_WS_URL as string) || 'wss://demos.yjs.dev'
-    const room = `playlist-${playlistId}`
-    const provider = new WebsocketProvider(wsUrl, room, doc)
-    providerRef.current = provider
+    const provider = createCollaborationProvider({ roomId, userName, userColor });
+    providerRef.current = provider;
 
-    // awareness for presence
-    provider.awareness.setLocalStateField('user', {
-      id: clientId,
-      name: userName,
-      color: '#'+Math.floor(Math.random()*16777215).toString(16)
-    })
+    // -- Track list observer --
+    const syncTracks = () => {
+      setTrackIds(provider.tracks.toArray());
+    };
+    provider.tracks.observe(syncTracks);
+    syncTracks(); // load initial state
 
-    const yArray = doc.getArray<Track>('tracks')
+    // -- Awareness observer (collaborators) --
+    const syncAwareness = () => {
+      const states = provider.awareness.getStates();
+      const list: Collaborator[] = [];
 
-    const updateLocalFromY = () => {
-      setTracks(yArray.toArray())
-    }
+      states.forEach((state, clientId) => {
+        const user = state["user"] as
+          | { name: string; color: string; joinedAt: number }
+          | undefined;
+        if (user) {
+          list.push({
+            id: clientId,
+            name: user.name,
+            color: user.color ?? "#4DA3FF",
+            joinedAt: user.joinedAt ?? Date.now(),
+          });
+        }
+      });
 
-    updateLocalFromY()
+      setCollaborators(list);
+    };
 
-    const observer = () => updateLocalFromY()
-    yArray.observe(observer)
+    provider.awareness.on("change", syncAwareness);
+    syncAwareness(); // load who's already here
 
-    const onAwarenessChange = () => {
-      const states = Array.from(provider.awareness.getStates().values())
-      setCollaborators(states.map((s:any)=>s.user).filter(Boolean))
-    }
+    // -- Connection status polling --
+    // (WebsocketProvider fires "status" events; mock is always connected)
+    const statusInterval = setInterval(() => {
+      setConnectionStatus(provider.status);
+    }, 1000);
 
-    provider.awareness.on('change', onAwarenessChange)
-    onAwarenessChange()
+    setConnectionStatus(provider.status);
+    setIsReady(true);
 
+    // -- Cleanup on unmount or roomId change --
     return () => {
-      yArray.unobserve(observer)
-      provider.awareness.off('change', onAwarenessChange)
-      provider.destroy()
-      doc.destroy()
-    }
-  }, [playlistId, clientId, userName])
+      provider.tracks.unobserve(syncTracks);
+      provider.awareness.off("change", syncAwareness);
+      clearInterval(statusInterval);
+      provider.destroy();
+      providerRef.current = null;
+      setIsReady(false);
+    };
+  }, [roomId, userName, userColor]);
 
-  const addTrack = (t: Omit<Track, 'id'>) => {
-    const id = uuidv4()
-    const track: Track = { id, ...t }
-    const doc = docRef.current
-    if (!doc) return
-    const yArray = doc.getArray<Track>('tracks')
+  // ----------------------------------------------------------
+  // Track operations — always go through the shared Yjs doc
+  // ----------------------------------------------------------
 
-    // optimistic: apply locally immediately
-    yArray.push([track])
+  const addTrack = useCallback((trackId: string) => {
+    const provider = providerRef.current;
+    if (!provider) return;
+    provider.doc.transact(() => {
+      provider.tracks.push([trackId]);
+    });
+  }, []);
 
-    const act: Activity = {
-      id: uuidv4(),
-      userId: clientId,
-      userName,
-      action: 'added',
-      track,
-      ts: Date.now()
-    }
-    setActivities(a => [act, ...a].slice(0, 100))
+  const removeTrack = useCallback((index: number) => {
+    const provider = providerRef.current;
+    if (!provider) return;
+    if (index < 0 || index >= provider.tracks.length) return;
+    provider.doc.transact(() => {
+      provider.tracks.delete(index, 1);
+    });
+  }, []);
 
-    return id
-  }
+  const moveTrack = useCallback((fromIndex: number, toIndex: number) => {
+    const provider = providerRef.current;
+    if (!provider) return;
+    const tracks = provider.tracks;
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= tracks.length ||
+      toIndex >= tracks.length
+    ) return;
 
-  const removeTrack = (id: string) => {
-    const doc = docRef.current
-    if (!doc) return
-    const yArray = doc.getArray<Track>('tracks')
-    const arr = yArray.toArray()
-    const idx = arr.findIndex(t => t.id === id)
-    if (idx !== -1) {
-      yArray.delete(idx, 1)
-
-      const act: Activity = {
-        id: uuidv4(),
-        userId: clientId,
-        userName,
-        action: 'removed',
-        track: arr[idx],
-        ts: Date.now()
-      }
-      setActivities(a => [act, ...a].slice(0, 100))
-      return true
-    }
-    return false
-  }
+    provider.doc.transact(() => {
+      const [item] = tracks.toArray().splice(fromIndex, 1);
+      tracks.delete(fromIndex, 1);
+      tracks.insert(toIndex, [item]);
+    });
+  }, []);
 
   return {
-    tracks,
+    trackIds,
+    collaborators,
+    connectionStatus,
     addTrack,
     removeTrack,
-    activities,
-    collaborators
-  }
+    moveTrack,
+    isReady,
+  };
 }
-
-export type { Track, Activity }

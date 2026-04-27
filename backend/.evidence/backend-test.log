@@ -17,3 +17,14 @@ Tests:       5 passed, 5 total
 Snapshots:   0 total
 Time:        2.288 s, estimated 3 s
 Ran all test suites matching /src\/notifications\/notifications.gateway.spec.ts/i.
+/**
+ * Compression Measurement Script
+ * 
+ * This script measures the effectiveness of HTTP response compression
+ * on key API endpoints by comparing response sizes with different
+ * compression algorithms (brotli, gzip, none).
+ * 
+ * Usage: node scripts/measure-compression.js
+ * 
+ * Requirements: Server must be running on the configured port
+ */
