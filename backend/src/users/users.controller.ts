@@ -11,6 +11,7 @@ import {
   HttpStatus,
   Query,
   BadRequestException,
+  UseGuards,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -23,6 +24,8 @@ import { UsersService } from "./users.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { User } from "./entities/user.entity";
+import { SelfOrAdminGuard } from "./guards/self-or-admin.guard";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ThrottleOverride } from "../common/decorators/throttle-override.decorator";
 import {
   RouteTypeDecorator,
@@ -156,6 +159,7 @@ export class UsersController {
   }
 
   @Patch(":id")
+  @UseGuards(JwtAuthGuard, SelfOrAdminGuard)
   @RouteTypeDecorator(RouteType.MODERATE_WRITE)
   @ThrottleOverride("USER_UPDATE") // 50 requests per minute
   @ApiOperation({ summary: "Update a user" })
@@ -171,6 +175,11 @@ export class UsersController {
   })
   @ApiResponse({ status: 404, description: "User not found" })
   @ApiResponse({
+    status: 403,
+    description:
+      "Forbidden - Can only update your own account or need admin privileges",
+  })
+  @ApiResponse({
     status: 409,
     description: "Conflict - Username, email, or wallet address already exists",
   })
@@ -182,8 +191,9 @@ export class UsersController {
   }
 
   @Delete(":id")
+  @UseGuards(JwtAuthGuard, SelfOrAdminGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Soft delete a user (authenticated user only)" })
+  @ApiOperation({ summary: "Soft delete a user (self or admin only)" })
   @ApiParam({ name: "id", description: "User UUID", type: "string" })
   @ApiResponse({ status: 204, description: "User soft-deleted successfully" })
   @ApiResponse({
@@ -191,24 +201,34 @@ export class UsersController {
     description: "Bad Request - Invalid UUID format",
   })
   @ApiResponse({ status: 404, description: "User not found" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Forbidden - Can only delete your own account or need admin privileges",
+  })
   async remove(@Param("id", ParseUUIDPipe) id: string): Promise<void> {
     return this.usersService.remove(id);
   }
 
   // Admin only
   @Delete(":id/hard")
+  @UseGuards(JwtAuthGuard, SelfOrAdminGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Hard delete a user (admin only)" })
   @ApiParam({ name: "id", description: "User UUID", type: "string" })
   @ApiResponse({ status: 204, description: "User hard-deleted successfully" })
   @ApiResponse({ status: 404, description: "User not found" })
+  @ApiResponse({
+    status: 403,
+    description: "Forbidden - Admin privileges required",
+  })
   async hardDelete(@Param("id", ParseUUIDPipe) id: string): Promise<void> {
-    // TODO: Add admin guard
     return this.usersService.hardDelete(id);
   }
 
   // Admin only
   @Post(":id/restore")
+  @UseGuards(JwtAuthGuard, SelfOrAdminGuard)
   @ApiOperation({ summary: "Restore a soft-deleted user (admin only)" })
   @ApiParam({ name: "id", description: "User UUID", type: "string" })
   @ApiResponse({
@@ -217,8 +237,11 @@ export class UsersController {
     type: User,
   })
   @ApiResponse({ status: 404, description: "User not found" })
+  @ApiResponse({
+    status: 403,
+    description: "Forbidden - Admin privileges required",
+  })
   async restore(@Param("id", ParseUUIDPipe) id: string): Promise<User> {
-    // TODO: Add admin guard
     return this.usersService.restore(id);
   }
 }
