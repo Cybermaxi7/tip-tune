@@ -5,7 +5,7 @@ import type { TipFiltersState } from '../components/tip-history';
 import { defaultTipFilters } from '../components/tip-history';
 import type { TipHistoryItem } from '../types';
 import { exportTipHistoryToCSV } from '../utils/formatter';
-import { ApiTipHistorySource, FixtureTipHistorySource } from '../services/tipService';
+import { ApiTipHistorySource, FixtureTipHistorySource } from '../services/tipHistorySource';
 import type { TipHistorySource } from '../services/tipHistorySource';
 import SocialShareModal from '../components/tip/SocialShareModal';
 

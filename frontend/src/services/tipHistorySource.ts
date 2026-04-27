@@ -1,6 +1,7 @@
 import type { TipHistoryItem } from '../types';
 import type { TipFiltersState } from '../components/tip-history';
 import { mockTipHistoryData } from '../fixtures/tipHistory.fixtures';
+import { tipService } from './tipService';
 
 /**
  * Interface for tip history data sources.
@@ -61,7 +62,7 @@ export function applyFiltersAndSort(
   const dateTo = filters.dateTo ? new Date(filters.dateTo).getTime() : null;
   const amountMin = filters.amountMin ? Number(filters.amountMin) : null;
   const amountMax = filters.amountMax ? Number(filters.amountMax) : null;
-  const q = filters.searchQuery.trim().toLowerCase();
+  const q = (filters.searchQuery ?? '').trim().toLowerCase();
   const asset = filters.assetType;
 
   result = result.filter((tip) => {
@@ -153,5 +154,103 @@ export class FixtureTipHistorySource implements TipHistorySource {
     const totalSent = this.sentTips.reduce((sum, t) => sum + (t.usdAmount ?? t.amount), 0);
     const totalReceived = this.receivedTips.reduce((sum, t) => sum + (t.usdAmount ?? t.amount), 0);
     return { totalSent, totalReceived };
+  }
+}
+
+/**
+ * API-based implementation of TipHistorySource.
+ * Fetches data from the backend API.
+ */
+export class ApiTipHistorySource implements TipHistorySource {
+  private userId?: string;
+  private artistId?: string;
+
+  constructor(userId?: string, artistId?: string) {
+    this.userId = userId;
+    this.artistId = artistId;
+  }
+
+  private mapApiTipToHistoryItem = (d: any): TipHistoryItem => ({
+    id: d.id,
+    tipperName: d.tipperName ?? d.fromUser?.username ?? 'Unknown',
+    tipperAvatar: d.tipperAvatar ?? '',
+    amount: Number(d.amount),
+    message: d.message ?? '',
+    timestamp: d.createdAt ?? d.timestamp ?? new Date().toISOString(),
+    trackId: d.trackId,
+    trackTitle: d.track?.title,
+    artistName: d.artist?.artistName,
+    assetCode: d.assetCode ?? 'XLM',
+    usdAmount: d.fiatAmount != null ? Number(d.fiatAmount) : undefined,
+    stellarTxHash: d.stellarTxHash,
+  });
+
+  async getSentTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    if (!this.userId) {
+      return { items: [], total: 0, hasMore: false };
+    }
+
+    try {
+      const response = await tipService.getUserHistory(this.userId, page, pageSize);
+      const items = response.data?.map(this.mapApiTipToHistoryItem) ?? [];
+      const filtered = applyFiltersAndSort(items, filters);
+      return {
+        items: filtered,
+        total: response.meta?.total ?? 0,
+        hasMore: response.meta?.hasNextPage ?? false,
+      };
+    } catch (error) {
+      console.error('Failed to fetch sent tips:', error);
+      return { items: [], total: 0, hasMore: false };
+    }
+  }
+
+  async getReceivedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    if (!this.artistId) {
+      return { items: [], total: 0, hasMore: false };
+    }
+
+    try {
+      const response = await tipService.getArtistReceived(this.artistId, page, pageSize);
+      const items = response.data?.map(this.mapApiTipToHistoryItem) ?? [];
+      const filtered = applyFiltersAndSort(items, filters);
+      return {
+        items: filtered,
+        total: response.meta?.total ?? 0,
+        hasMore: response.meta?.hasNextPage ?? false,
+      };
+    } catch (error) {
+      console.error('Failed to fetch received tips:', error);
+      return { items: [], total: 0, hasMore: false };
+    }
+  }
+
+  async getGiftedTips(filters: TipFiltersState = { sort: 'newest', assetType: 'all', searchQuery: '' }, page = 1, pageSize = 10) {
+    // TODO: Implement gifted tips API endpoint
+    // For now, return empty as gifted tips are fixture-only
+    return { items: [], total: 0, hasMore: false };
+  }
+
+  async getAllTipsForExport(type: 'sent' | 'received' | 'gifted', filters?: TipFiltersState) {
+    // For export, we need all data, so fetch with a large limit
+    const result = await this.getTipsByType(type, filters, 1, 1000);
+    return result.items;
+  }
+
+  private async getTipsByType(type: 'sent' | 'received' | 'gifted', filters?: TipFiltersState, page = 1, pageSize = 10) {
+    switch (type) {
+      case 'sent':
+        return this.getSentTips(filters, page, pageSize);
+      case 'received':
+        return this.getReceivedTips(filters, page, pageSize);
+      case 'gifted':
+        return this.getGiftedTips(filters, page, pageSize);
+    }
+  }
+
+  async getStats() {
+    // TODO: Implement stats API endpoint
+    // For now, return zeros
+    return { totalSent: 0, totalReceived: 0 };
   }
 }
