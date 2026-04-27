@@ -3,8 +3,9 @@ import { Check, Loader2, Monitor, Save, Volume2, VolumeX } from 'lucide-react';
 import { useWallet } from '../../hooks/useWallet';
 import { useTheme } from '../../hooks/useTheme';
 import ThemeToggle from '../ThemeToggle';
-import { userService } from '../../services/userService';
 import { setComboSoundEnabled } from '../../utils/combo';
+import { settingsStore } from '../../stores/settingsStore';
+import type { DisplaySettings as DisplaySettingsType } from '../../stores/settingsStore';
 
 const STORAGE_KEY = 'tiptune.display.controls.v1';
 
@@ -84,67 +85,39 @@ const DisplaySettings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [controls, setControls] = useState<LocalDisplayControls>(defaultControls);
-  const [originalControls, setOriginalControls] =
-    useState<LocalDisplayControls>(defaultControls);
+  const [storeState, setStoreState] = useState(() => settingsStore.getState());
+
+  const controls = storeState.settings.display;
+  const originalControls = storeState.originalSettings.display;
 
   useEffect(() => {
-    let cancelled = false;
+    const unsubscribe = settingsStore.subscribe(() => {
+      setStoreState(settingsStore.getState());
+    });
 
-    const load = async () => {
-      const local = readLocalControls();
-      if (!cancelled) {
-        setControls(local);
-        setOriginalControls(local);
-      }
-
-      if (isConnected) {
-        try {
-          const response = await userService.getSettings();
-          if (cancelled) return;
-          setControls((prev) => ({
-            ...prev,
-            compactMode: response.display?.compactMode ?? prev.compactMode,
-          }));
-        } catch {
-          // Keep local values when backend settings are unavailable.
-        }
-      }
-
-      if (!cancelled) {
-        setIsLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isConnected]);
+    // Initialize from store
+    setIsLoading(false);
+    return () => unsubscribe();
+  }, []);
 
   const hasChanges = useMemo(
-    () => JSON.stringify(controls) !== JSON.stringify(originalControls),
-    [controls, originalControls],
+    () => storeState.isDirty || JSON.stringify(controls) !== JSON.stringify(originalControls),
+    [storeState.isDirty, controls, originalControls]
   );
 
   const handleSave = async () => {
     setIsSaving(true);
     setStatusMessage(null);
-    persistLocalControls(controls);
 
     try {
-      if (isConnected) {
-        await userService.updateDisplaySettings({
-          theme: preferences.mode === 'auto' ? 'system' : preferences.mode,
-          compactMode: controls.compactMode,
-          showAnimations: preferences.animationsEnabled,
-          highContrast: preferences.highContrast,
-          oledDark: preferences.oledDark,
-        });
-      }
+      const saved = await settingsStore.save();
 
-      setOriginalControls(controls);
-      setStatusMessage('Display preferences saved');
+      if (saved) {
+        setComboSoundEnabled(controls.comboSoundEnabled);
+        setStatusMessage('Display preferences saved');
+      } else {
+        setStatusMessage('Saved locally. Remote sync is currently unavailable.');
+      }
     } catch {
       setStatusMessage('Saved locally. Remote sync is currently unavailable.');
     } finally {
@@ -199,7 +172,7 @@ const DisplaySettings = () => {
           title="Compact Layout"
           description="Reduce spacing across selected dashboard sections."
           value={controls.compactMode}
-          onChange={(next) => setControls((prev) => ({ ...prev, compactMode: next }))}
+          onChange={(next) => settingsStore.updateSection('display', { compactMode: next })}
         />
       </section>
 
@@ -210,9 +183,7 @@ const DisplaySettings = () => {
           title="Combo Sound Effects"
           description="Play short audio cues during active tip combos."
           value={controls.comboSoundEnabled}
-          onChange={(next) =>
-            setControls((prev) => ({ ...prev, comboSoundEnabled: next }))
-          }
+          onChange={(next) => settingsStore.updateSection('display', { comboSoundEnabled: next })}
         />
       </section>
 

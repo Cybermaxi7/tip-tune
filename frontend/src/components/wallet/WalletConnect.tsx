@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useWallet } from '../../hooks/useWallet';
+import { useEnhancedWallet } from '../../hooks/useEnhancedWallet';
 import { truncateAddress } from '../../utils/stellar';
 import { WalletError } from '../../types/wallet';
+import { getWalletErrorInfo, isWalletErrorRecoverable } from '../../utils/walletErrors';
 
 const WalletConnect: React.FC = () => {
   const {
@@ -17,7 +18,11 @@ const WalletConnect: React.FC = () => {
     disconnect,
     switchNetwork,
     refreshBalance,
-  } = useWallet();
+    connectionState,
+    canRetry,
+    retryConnection,
+    errorInfo,
+  } = useEnhancedWallet();
 
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -26,11 +31,11 @@ const WalletConnect: React.FC = () => {
       setLocalError(null);
       await connect();
     } catch (err) {
-      if (err instanceof WalletError) {
-        setLocalError(err.message);
-      } else {
-        setLocalError('Failed to connect wallet. Please try again.');
-      }
+      const errorMessage =
+        err instanceof WalletError
+          ? err.message
+          : 'Failed to connect wallet. Please try again.';
+      setLocalError(errorMessage);
     }
   };
 
@@ -48,11 +53,11 @@ const WalletConnect: React.FC = () => {
       setLocalError(null);
       await switchNetwork(newNetwork);
     } catch (err) {
-      if (err instanceof WalletError) {
-        setLocalError(err.message);
-      } else {
-        setLocalError('Failed to switch network.');
-      }
+      const errorMessage =
+        err instanceof WalletError
+          ? err.message
+          : 'Failed to switch network.';
+      setLocalError(errorMessage);
     }
   };
 
@@ -66,6 +71,8 @@ const WalletConnect: React.FC = () => {
   };
 
   const displayError = error || localError;
+  const isRecoverable = error ? isWalletErrorRecoverable(new Error(error)) : true;
+  const showInstallPrompt = errorInfo?.category === 'wallet_not_installed';
 
   if (isConnected && publicKey) {
     return (
@@ -142,6 +149,14 @@ const WalletConnect: React.FC = () => {
           {displayError && (
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm" role="alert">
               {displayError}
+              {isRecoverable && error && (
+                <button
+                  onClick={retryConnection}
+                  className="ml-2 underline hover:text-red-300"
+                >
+                  Try Again
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -173,19 +188,27 @@ const WalletConnect: React.FC = () => {
       {displayError && (
         <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm" role="alert">
           {displayError}
+          {isRecoverable && error && (
+            <button
+              onClick={retryConnection}
+              className="ml-2 underline hover:text-red-300"
+            >
+              Try Again
+            </button>
+          )}
         </div>
       )}
 
-      {!isConnecting && displayError?.includes('NOT_INSTALLED') && (
+      {showInstallPrompt && errorInfo?.action?.link && (
         <div className="mt-4 p-4 bg-blue-primary/10 rounded-lg">
           <p className="text-ice-blue text-sm mb-2">Don't have Freighter?</p>
           <a
-            href="https://freighter.app"
+            href={errorInfo.action.link}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-primary hover:text-ice-blue font-medium text-sm transition-colors"
           >
-            Install Freighter Wallet →
+            {errorInfo.action.label} →
           </a>
         </div>
       )}

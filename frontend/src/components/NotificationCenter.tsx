@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check } from 'lucide-react';
-import { useNotifications, Notification } from '../hooks/useNotifications';
+import { useNotifications } from '../hooks/useNotificationsRefactored';
+import type { Notification } from '../hooks/useNotificationsRefactored';
 import { Toast, ToastProps } from './Toast';
 import { useToastQueue, QueuedToast } from '../hooks/useToastQueue';
 
@@ -25,12 +26,14 @@ export const NotificationCenter: React.FC = () => {
   useEffect(() => {
     if (prevNotificationsRef.current.length > 0 && notifications.length > prevNotificationsRef.current.length) {
       const newNotification = notifications[0];
-      addToast({
-        id: newNotification.id,
-        type: 'tip',
-        title: newNotification.title,
-        message: newNotification.message,
-      });
+      if (newNotification) {
+        addToast({
+          id: newNotification.id,
+          type: 'tip',
+          title: newNotification.title,
+          message: newNotification.message,
+        });
+      }
     }
     prevNotificationsRef.current = notifications;
   }, [notifications, addToast]);
