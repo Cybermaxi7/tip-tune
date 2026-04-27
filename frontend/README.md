@@ -32,13 +32,7 @@ npm install
 cp .env.example .env
 ```
 
-1. Update `.env` with your configuration:
-
-```env
-VITE_API_BASE_URL=http://localhost:3001/api/v1
-VITE_STELLAR_NETWORK=testnet
-VITE_STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-```
+1. Update `.env` with your configuration. For a complete list of frontend variables, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
 
 ## Development
 

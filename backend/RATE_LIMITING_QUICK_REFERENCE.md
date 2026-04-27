@@ -10,6 +10,8 @@ npm install @nestjs/throttler throttler-storage-redis
 
 ## Environment Variables
 
+TipTune uses environment variables for Redis and rate limiting configuration. For a complete reference, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
+
 ```env
 REDIS_HOST=localhost
 REDIS_PORT=6379

@@ -7,9 +7,9 @@ use crate::storage::{get_distribution_log, get_log_count, is_settled as storage_
 /// NOTE: This is an expensive operation and only searches within the current retention window.
 pub fn get_settlements_by_payout_id(
     env: Env,
-    payout_id: String,
+    _payout_id: String,
 ) -> Result<Vec<DistributionRecord>, Error> {
-    let mut settlements = Vec::new(&env);
+    let settlements = Vec::new(&env);
 
     // This is still inherently difficult without a global index or iterating over all tracks.
     // Since we don't have a list of all tracks, this function's original implementation was likely

@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TipHistoryPage } from '../pages/TipHistoryPage';
-import { FixtureTipHistorySource } from '../services/tipHistorySource';
-import * as tipService from '../services/tipService';
+import { FixtureTipHistorySource, ApiTipHistorySource } from '../services/tipHistorySource';
+import * as tipHistorySourceModule from '../services/tipHistorySource';
 import { exportTipHistoryToCSV } from '../utils/formatter';
 
 // Mock dependencies
@@ -87,11 +88,11 @@ describe('TipHistoryPage', () => {
     });
   });
 
-  it('should switch to gifts tab', async () => {
+  it('should switch to gifted tab', async () => {
     render(<TipHistoryPage />);
 
-    const giftsTab = screen.getByText('🎁 Gifts');
-    fireEvent.click(giftsTab);
+    const giftedTab = screen.getByText('🎁 Gifts');
+    fireEvent.click(giftedTab);
 
     await waitFor(() => {
       const tipCards = screen.getAllByTestId(/^tip-card-/);
@@ -164,7 +165,9 @@ describe('TipHistoryPage', () => {
   it('should show empty state when no tips match filters', async () => {
     // Mock source to return empty results
     const mockSource = new FixtureTipHistorySource();
-    vi.spyOn(tipService, 'FixtureTipHistorySource').mockImplementation(() => mockSource);
+    vi.spyOn(tipHistorySourceModule, 'FixtureTipHistorySource').mockImplementation(function() {
+      return mockSource;
+    });
     // This is tricky to mock properly, but the test structure is in place
 
     render(<TipHistoryPage />);
@@ -189,11 +192,13 @@ describe('TipHistoryPage', () => {
   it('should use API source when user/artist ID is provided', () => {
     vi.stubEnv('VITE_DEV_USER_ID', 'user123');
 
-    const mockApiSource = new tipService.ApiTipHistorySource('user123');
-    vi.spyOn(tipService, 'ApiTipHistorySource').mockReturnValue(mockApiSource);
+    const mockApiSource = new ApiTipHistorySource('user123');
+    vi.spyOn(tipHistorySourceModule, 'ApiTipHistorySource').mockImplementation(function() {
+      return mockApiSource;
+    });
 
     render(<TipHistoryPage />);
 
-    expect(tipService.ApiTipHistorySource).toHaveBeenCalledWith('user123', undefined);
+    expect(tipHistorySourceModule.ApiTipHistorySource).toHaveBeenCalledWith('user123', undefined);
   });
 });

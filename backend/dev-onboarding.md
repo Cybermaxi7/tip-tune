@@ -69,15 +69,13 @@ pnpm install
 
 ## 3. Configure Environment Variables
 
-Create .env inside apps/api:
+For a complete list of environment variables, descriptions, and defaults, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
 
-DATABASE_URL=
-JWT_SECRET=
-REDIS_URL=
-STELLAR_NETWORK=testnet
-STELLAR_ISSUER=
-STELLAR_USDC_ASSET_CODE=USDC
-CDN_BASE_URL=
+Core variables to get started:
+- `DB_*`: Database credentials
+- `JWT_SECRET`: Secret for tokens
+- `STELLAR_NETWORK`: `testnet`
+- `STELLAR_TIP_ESCROW_CONTRACT`: Deployed contract ID
 
 ---
 

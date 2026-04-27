@@ -3,11 +3,11 @@ import { useToastQueue, QueuedToast } from '../useToastQueue';
 
 describe('useToastQueue', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('should add toasts to queue', () => {
@@ -22,13 +22,17 @@ describe('useToastQueue', () => {
       });
     });
 
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
     expect(result.current.toasts.length).toBeGreaterThan(0);
   });
 
   it('should deduplicate by tip id', () => {
     const { result } = renderHook(() => useToastQueue());
 
-    let added1: boolean;
+    let added1!: boolean;
     act(() => {
       added1 = result.current.addToast({
         id: 'toast-1',
@@ -39,7 +43,7 @@ describe('useToastQueue', () => {
       });
     });
 
-    let added2: boolean;
+    let added2!: boolean;
     act(() => {
       added2 = result.current.addToast({
         id: 'toast-2',
@@ -75,7 +79,7 @@ describe('useToastQueue', () => {
     });
 
     act(() => {
-      jest.advanceTimersByTime(0);
+      vi.advanceTimersByTime(0);
     });
 
     const visible = result.current.toasts;
@@ -98,7 +102,7 @@ describe('useToastQueue', () => {
     }
 
     act(() => {
-      jest.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3000);
     });
 
     expect(result.current.toasts.length).toBeLessThanOrEqual(3);
@@ -117,7 +121,7 @@ describe('useToastQueue', () => {
     });
 
     act(() => {
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
     });
 
     const toastId = result.current.toasts[0]?.id;

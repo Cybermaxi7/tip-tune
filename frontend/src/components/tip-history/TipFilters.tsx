@@ -4,10 +4,10 @@ import { Search, Calendar } from 'lucide-react';
 export type SortOption = 'newest' | 'oldest' | 'highest_amount';
 
 export interface TipFiltersState {
-  dateFrom: string;
-  dateTo: string;
-  amountMin: string;
-  amountMax: string;
+  dateFrom?: string;
+  dateTo?: string;
+  amountMin?: string;
+  amountMax?: string;
   searchQuery: string;
   assetType: 'all' | 'XLM' | 'USDC';
   sort: SortOption;

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FixtureTipHistorySource } from '../services/tipHistorySource';
-import { ApiTipHistorySource } from '../services/tipService';
+import { FixtureTipHistorySource, ApiTipHistorySource } from '../services/tipHistorySource';
 import { mockTipHistoryData } from '../fixtures/tipHistory.fixtures';
 import type { TipFiltersState } from '../components/tip-history';
 
@@ -108,10 +107,11 @@ describe('TipHistorySource', () => {
   });
 
   describe('ApiTipHistorySource', () => {
-    const { tipService } = await import('../services/tipService');
+    let tipService: any;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.clearAllMocks();
+      ({ tipService } = await import('../services/tipService'));
     });
 
     it('should fetch sent tips from API', async () => {
