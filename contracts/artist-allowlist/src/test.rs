@@ -487,6 +487,109 @@ fn test_batch_remove_partial_atomicity() {
     assert_eq!(client.is_on_allowlist(&artist, &tipper2), true);
 }
 
+// Enumeration and pagination tests
+#[test]
+fn test_list_allowlist_basic() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let tipper1 = Address::generate(&env);
+    let tipper2 = Address::generate(&env);
+    let tipper3 = Address::generate(&env);
+
+    client.add_to_allowlist(&artist, &tipper1);
+    client.add_to_allowlist(&artist, &tipper2);
+    client.add_to_allowlist(&artist, &tipper3);
+
+    let page = client.list_allowlist(&artist, &0, &10);
+    assert_eq!(page.len(), 3);
+}
+
+#[test]
+fn test_get_allowlist_count() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    assert_eq!(client.get_allowlist_count(&artist), 0);
+
+    let tipper1 = Address::generate(&env);
+    let tipper2 = Address::generate(&env);
+    client.add_to_allowlist(&artist, &tipper1);
+    client.add_to_allowlist(&artist, &tipper2);
+    assert_eq!(client.get_allowlist_count(&artist), 2);
+
+    client.remove_from_allowlist(&artist, &tipper1);
+    assert_eq!(client.get_allowlist_count(&artist), 1);
+}
+
+#[test]
+fn test_list_allowlist_pagination() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let tippers: soroban_sdk::Vec<Address> = soroban_sdk::vec![
+        &env,
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+    ];
+    client.add_batch_to_allowlist(&artist, &tippers);
+
+    let page0 = client.list_allowlist(&artist, &0, &2);
+    assert_eq!(page0.len(), 2);
+
+    let page1 = client.list_allowlist(&artist, &1, &2);
+    assert_eq!(page1.len(), 2);
+
+    let page2 = client.list_allowlist(&artist, &2, &2);
+    assert_eq!(page2.len(), 1);
+
+    let page3 = client.list_allowlist(&artist, &3, &2);
+    assert_eq!(page3.len(), 0);
+}
+
+#[test]
+fn test_list_allowlist_count_reflects_removes() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let tipper1 = Address::generate(&env);
+    let tipper2 = Address::generate(&env);
+    let tipper3 = Address::generate(&env);
+
+    let addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone(), tipper3.clone()];
+    client.add_batch_to_allowlist(&artist, &addresses);
+    assert_eq!(client.get_allowlist_count(&artist), 3);
+
+    client.remove_from_allowlist(&artist, &tipper2);
+    assert_eq!(client.get_allowlist_count(&artist), 2);
+
+    let page = client.list_allowlist(&artist, &0, &10);
+    assert_eq!(page.len(), 2);
+}
+
+#[test]
+fn test_list_allowlist_empty_artist() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let page = client.list_allowlist(&artist, &0, &10);
+    assert_eq!(page.len(), 0);
+    assert_eq!(client.get_allowlist_count(&artist), 0);
+}
+
 // Token gate hardening tests
 #[test]
 fn test_get_token_gate_found() {

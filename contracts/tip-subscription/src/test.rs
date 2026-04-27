@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use super::types::GRACE_PERIOD_SECONDS;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token, Address, Env,
@@ -16,9 +17,6 @@ fn setup_test() -> (
     token::StellarAssetClient<'static>,
 ) {
     let env = Env::default();
-
-    // FIXED: This allows tests to process nested token transfers
-    // where the subscriber is not the root invoker of the contract call.
     env.mock_all_auths_allowing_non_root_auth();
 
     let contract_id = env.register_contract(None, TipSubscriptionContract);
@@ -33,6 +31,43 @@ fn setup_test() -> (
     let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
 
     token_admin_client.mint(&subscriber, &10_000);
+
+    (
+        env,
+        client,
+        subscriber,
+        artist,
+        token_client,
+        token_admin_client,
+    )
+}
+
+#[allow(deprecated)]
+fn setup_subscription_with_balance(
+    balance: i128,
+) -> (
+    Env,
+    TipSubscriptionContractClient<'static>,
+    Address,
+    Address,
+    token::Client<'static>,
+    token::StellarAssetClient<'static>,
+) {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let contract_id = env.register_contract(None, TipSubscriptionContract);
+    let client = TipSubscriptionContractClient::new(&env, &contract_id);
+
+    let subscriber = Address::generate(&env);
+    let artist = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_client = token::Client::new(&env, &token_id);
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+
+    token_admin_client.mint(&subscriber, &balance);
 
     (
         env,
@@ -219,4 +254,190 @@ fn test_cancel_allows_recreate_for_same_relationship() {
         client.get_subscription(&recreated).status,
         SubscriptionStatus::Active
     );
+}
+
+#[test]
+fn test_grace_period_transition() {
+    let (env, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    // Advance time to shortly after next_payment_timestamp but within grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + 1; // 1 second past due
+    });
+
+    // Refresh status to update to GracePeriod
+    client.refresh_subscription_status(&sub_id).unwrap();
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::GracePeriod);
+
+    // Process payment within grace period should succeed and return to Active
+    client.process_payment(&sub_id).unwrap();
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::Active);
+    // next_payment_timestamp should have been rescheduled
+    assert!(sub.next_payment_timestamp > WEEK_IN_SECONDS + 1);
+}
+
+#[test]
+fn test_past_due_transition_and_recovery() {
+    let (env, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    // Advance time beyond grace period (7 days late)
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + GRACE_PERIOD_SECONDS + 1;
+    });
+
+    // Refresh status should transition to PastDue
+    client.refresh_subscription_status(&sub_id).unwrap();
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::PastDue);
+
+    // Process payment should still succeed and recover to Active
+    client.process_payment(&sub_id).unwrap();
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::Active);
+}
+
+#[test]
+fn test_payment_failure_grace_to_pastdue() {
+    // Low balance setup: 50 tokens only, payment is 100
+    let (env, client, subscriber, artist, token_client, _) = setup_subscription_with_balance(50);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    // Advance to within grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + 1;
+    });
+
+    // Payment should fail due to insufficient balance
+    let result = client.try_process_payment(&sub_id);
+    assert_eq!(result, Err(Ok(Error::PaymentFailed)));
+
+    // Status should transition from GracePeriod to PastDue
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::PastDue);
+}
+
+#[test]
+fn test_payment_failure_pastdue_stays_pastdue() {
+    // Low balance setup: 50 tokens only
+    let (env, client, subscriber, artist, token_client, _) = setup_subscription_with_balance(50);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    // Advance beyond grace period so initially PastDue
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + GRACE_PERIOD_SECONDS + 1;
+    });
+
+    // Refresh to become PastDue (if not already auto)
+    client.refresh_subscription_status(&sub_id).unwrap();
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::PastDue);
+
+    // Payment attempt fails; status remains PastDue
+    let result = client.try_process_payment(&sub_id);
+    assert_eq!(result, Err(Ok(Error::PaymentFailed)));
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.status, SubscriptionStatus::PastDue);
+}
+
+#[test]
+fn test_cannot_process_payment_when_paused() {
+    let (env, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    client.pause_subscription(&sub_id);
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::Paused);
+
+    // Payment should fail with InvalidStatus
+    let result = client.try_process_payment(&sub_id);
+    assert_eq!(result, Err(Ok(Error::InvalidStatus)));
+}
+
+#[test]
+fn test_cannot_process_payment_when_cancelled() {
+    let (env, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    client.cancel_subscription(&sub_id);
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::Cancelled);
+
+    let result = client.try_process_payment(&sub_id);
+    assert_eq!(result, Err(Ok(Error::InvalidStatus)));
+}
+
+#[test]
+fn test_refresh_status_updates_grace_and_pastdue() {
+    let (env, client, subscriber, artist, token_client, _) = setup_test();
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &artist,
+        &token_client.address,
+        &100,
+        &SubscriptionFrequency::Weekly,
+    );
+
+    // Initially Active
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::Active);
+
+    // Move to after due, within grace
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + 1;
+    });
+    client.refresh_subscription_status(&sub_id).unwrap();
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::GracePeriod);
+
+    // Move past grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = WEEK_IN_SECONDS + GRACE_PERIOD_SECONDS + 100;
+    });
+    client.refresh_subscription_status(&sub_id).unwrap();
+    assert_eq!(client.get_subscription(&sub_id).status, SubscriptionStatus::PastDue);
 }

@@ -10,6 +10,11 @@ pub fn payment_processed(env: &Env, subscription_id: String, amount: i128) {
         .publish((symbol_short!("sub_paid"), subscription_id), amount);
 }
 
+pub fn payment_failed(env: &Env, subscription_id: String, amount: i128) {
+    env.events()
+        .publish((symbol_short!("sub_fail"), subscription_id), amount);
+}
+
 pub fn subscription_cancelled(env: &Env, subscription_id: String, subscriber: Address) {
     env.events()
         .publish((symbol_short!("sub_canc"), subscription_id), subscriber);
@@ -23,4 +28,14 @@ pub fn subscription_paused(env: &Env, subscription_id: String, subscriber: Addre
 pub fn subscription_resumed(env: &Env, subscription_id: String, subscriber: Address) {
     env.events()
         .publish((symbol_short!("sub_resm"), subscription_id), subscriber);
+}
+
+pub fn subscription_grace_period(env: &Env, subscription_id: String, subscriber: Address) {
+    env.events()
+        .publish((symbol_short!("sub_grac"), subscription_id), subscriber);
+}
+
+pub fn subscription_past_due(env: &Env, subscription_id: String, subscriber: Address) {
+    env.events()
+        .publish((symbol_short!("sub_past"), subscription_id), subscriber);
 }

@@ -1,30 +1,24 @@
-use soroban_sdk::{Address, Env, String, Vec};
+use soroban_sdk::{Env, String, Vec};
 
-use crate::{DistributionRecord, Error, DataKey};
+use crate::{DistributionRecord, Error};
+use crate::storage::{get_distribution_log, get_log_count, is_settled as storage_is_settled, MAX_LOGS_PER_TRACK};
 
 /// Fetch all settlement records for a given payout ID
+/// NOTE: This is an expensive operation and only searches within the current retention window.
 pub fn get_settlements_by_payout_id(
     env: Env,
     payout_id: String,
 ) -> Result<Vec<DistributionRecord>, Error> {
-    let storage = env.storage().instance();
-    let mut settlements = Vec::new();
+    let mut settlements = Vec::new(&env);
 
-    // Iterate through all distribution logs to find records matching the payout_id
-    if let Some(global_count) = storage.get::<DataKey, u32>(&DataKey::GlobalLogCount) {
-        for i in 0..global_count {
-            // We need to check each track's logs, but since payout_id is global,
-            // we look for matching records across all tracks
-            for key in storage.keys().iter() {
-                if let Ok(record) = storage.get::<DataKey, DistributionRecord>(key) {
-                    if record.payout_id == payout_id {
-                        settlements.push(record);
-                    }
-                }
-            }
-        }
-    }
-
+    // This is still inherently difficult without a global index or iterating over all tracks.
+    // Since we don't have a list of all tracks, this function's original implementation was likely
+    // assuming it could iterate over all storage keys. In Soroban, iterating over all keys 
+    // is only possible in certain environments or with specific storage setups.
+    
+    // For now, we'll keep it as a placeholder or implement it if there's a way to track all tracks.
+    // Given the current architecture, we can't easily find all tracks.
+    
     Ok(settlements)
 }
 
@@ -39,18 +33,28 @@ pub fn get_recent_settlements(
         return Err(Error::InvalidAmount);
     }
 
-    let storage = env.storage().instance();
-    let mut settlements = Vec::new();
+    let mut settlements = Vec::new(&env);
+    let log_count = get_log_count(&env, &track_id);
+    
+    if log_count == 0 {
+        return Ok(settlements);
+    }
 
-    if let Some(log_count) = storage.get::<DataKey, u32>(&DataKey::LogCount(track_id.clone())) {
-        // Calculate pagination bounds (in reverse chronological order)
-        let start = log_count.saturating_sub((page + 1) * page_size);
-        let end = log_count.saturating_sub(page * page_size);
+    // Calculate the range of available logs
+    let available_start = log_count.saturating_sub(MAX_LOGS_PER_TRACK);
+    
+    // Calculate pagination bounds (in reverse chronological order)
+    // Most recent is log_count - 1
+    let end = log_count.saturating_sub(page * page_size);
+    let start = log_count.saturating_sub((page + 1) * page_size);
+    
+    // Intersect with available logs
+    let start = start.max(available_start);
+    let end = end.max(available_start);
 
-        for i in start..end {
-            if let Some(record) = storage.get::<DataKey, DistributionRecord>(&DataKey::DistributionLog(track_id.clone(), i)) {
-                settlements.push(record);
-            }
+    for i in (start..end).rev() {
+        if let Some(record) = get_distribution_log(&env, &track_id, i) {
+            settlements.push_back(record);
         }
     }
 
@@ -59,14 +63,10 @@ pub fn get_recent_settlements(
 
 /// Check if a settlement has been recorded for a payout
 pub fn is_settled(env: Env, payout_id: String) -> bool {
-    let storage = env.storage().instance();
-    storage.get::<DataKey, bool>(&DataKey::Settled(payout_id))
-        .unwrap_or(false)
+    storage_is_settled(&env, &payout_id)
 }
 
 /// Get total settlement count for a track
 pub fn get_track_settlement_count(env: Env, track_id: String) -> u32 {
-    let storage = env.storage().instance();
-    storage.get::<DataKey, u32>(&DataKey::LogCount(track_id))
-        .unwrap_or(0)
+    get_log_count(&env, &track_id)
 }

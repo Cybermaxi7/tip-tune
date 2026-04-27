@@ -6,7 +6,11 @@ use soroban_sdk::{
 
 mod storage;
 mod queries;
-use storage::{get_track_owner, set_track_owner};
+use storage::{
+    get_track_owner, set_track_owner, get_track_splits, set_track_splits,
+    add_distribution_log, get_distribution_log, get_log_count,
+    is_settled as storage_is_settled, set_settled as storage_set_settled,
+};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -52,16 +56,6 @@ pub struct DistributionRecord {
     pub timestamp: u64,
 }
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DataKey {
-    TrackSplits(String),
-    DistributionLog(String, u32), // track_id, index
-    LogCount(String),             // track_id -> count
-    GlobalLogCount,               // total distributions
-    Settled(String),              // payout_id -> bool
-}
-
 #[contract]
 pub struct AutoRoyaltyDistribution;
 
@@ -102,10 +96,7 @@ impl AutoRoyaltyDistribution {
 
         // Record this owner for future auth checks.
         set_track_owner(&env, &track_id, &owner);
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::TrackSplits(track_id.clone()), &collaborators);
+        set_track_splits(&env, &track_id, &collaborators);
 
         env.events()
             .publish((symbol_short!("splits"), symbol_short!("set")), track_id);
@@ -115,10 +106,7 @@ impl AutoRoyaltyDistribution {
 
     /// Get split configuration for a track
     pub fn get_splits(env: Env, track_id: String) -> Result<Vec<Collaborator>, Error> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::TrackSplits(track_id))
-            .ok_or(Error::TrackNotFound)
+        get_track_splits(&env, &track_id).ok_or(Error::TrackNotFound)
     }
 
     /// Receive a tip/royalty and automatically distribute it among collaborators.
@@ -131,11 +119,7 @@ impl AutoRoyaltyDistribution {
         asset: Asset,
     ) -> Result<Vec<(Address, i128)>, Error> {
         // Duplicate prevention
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::Settled(payout_id.clone()))
-        {
+        if storage_is_settled(&env, &payout_id) {
             return Err(Error::AlreadySettled);
         }
 
@@ -143,10 +127,7 @@ impl AutoRoyaltyDistribution {
             return Err(Error::InvalidAmount);
         }
 
-        let collaborators: Vec<Collaborator> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::TrackSplits(track_id.clone()))
+        let collaborators: Vec<Collaborator> = get_track_splits(&env, &track_id)
             .ok_or(Error::TrackNotFound)?;
 
         let mut distributions: Vec<(Address, i128)> = Vec::new(&env);
@@ -172,9 +153,7 @@ impl AutoRoyaltyDistribution {
         }
 
         // Mark as settled
-        env.storage()
-            .persistent()
-            .set(&DataKey::Settled(payout_id.clone()), &true);
+        storage_set_settled(&env, &payout_id);
 
         // Record history
         let record = DistributionRecord {
@@ -186,27 +165,7 @@ impl AutoRoyaltyDistribution {
             timestamp: env.ledger().timestamp(),
         };
 
-        let log_idx: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::LogCount(track_id.clone()))
-            .unwrap_or(0);
-        env.storage().persistent().set(
-            &DataKey::DistributionLog(track_id.clone(), log_idx),
-            &record,
-        );
-        env.storage()
-            .persistent()
-            .set(&DataKey::LogCount(track_id.clone()), &(log_idx + 1));
-
-        let global_count: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::GlobalLogCount)
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::GlobalLogCount, &(global_count + 1));
+        add_distribution_log(&env, &track_id, &record);
 
         // Emit distribution event
         env.events().publish(
@@ -240,17 +199,12 @@ impl AutoRoyaltyDistribution {
         track_id: String,
         index: u32,
     ) -> Option<DistributionRecord> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::DistributionLog(track_id, index))
+        get_distribution_log(&env, &track_id, index)
     }
 
     /// Get total settlement count for a track
     pub fn get_settlement_count(env: Env, track_id: String) -> u32 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::LogCount(track_id))
-            .unwrap_or(0)
+        get_log_count(&env, &track_id)
     }
 
     /// Get all settlements for a payout ID
@@ -273,7 +227,7 @@ impl AutoRoyaltyDistribution {
 
     /// Check if a payout has been settled
     pub fn is_payout_settled(env: Env, payout_id: String) -> bool {
-        queries::is_settled(env, payout_id)
+        storage_is_settled(&env, &payout_id)
     }
 }
 
