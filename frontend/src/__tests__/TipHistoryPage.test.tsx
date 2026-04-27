@@ -88,11 +88,11 @@ describe('TipHistoryPage', () => {
     });
   });
 
-  it('should switch to gifts tab', async () => {
+  it('should switch to gifted tab', async () => {
     render(<TipHistoryPage />);
 
-    const giftsTab = screen.getByText('🎁 Gifts');
-    fireEvent.click(giftsTab);
+    const giftedTab = screen.getByText('🎁 Gifts');
+    fireEvent.click(giftedTab);
 
     await waitFor(() => {
       const tipCards = screen.getAllByTestId(/^tip-card-/);

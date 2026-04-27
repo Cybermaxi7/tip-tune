@@ -32,7 +32,7 @@ describe('useToastQueue', () => {
   it('should deduplicate by tip id', () => {
     const { result } = renderHook(() => useToastQueue());
 
-    let added1: boolean;
+    let added1!: boolean;
     act(() => {
       added1 = result.current.addToast({
         id: 'toast-1',
@@ -43,7 +43,7 @@ describe('useToastQueue', () => {
       });
     });
 
-    let added2: boolean;
+    let added2!: boolean;
     act(() => {
       added2 = result.current.addToast({
         id: 'toast-2',

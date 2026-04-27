@@ -29,9 +29,9 @@ function useTipHistorySource(): TipHistorySource {
 
 export const TipHistoryPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabFromUrl = searchParams.get('tab') as 'sent' | 'received' | 'gifts' | null;
-  const [activeTab, setActiveTab] = useState<'sent' | 'received' | 'gifts'>(
-    tabFromUrl === 'sent' || tabFromUrl === 'received' || tabFromUrl === 'gifts' ? tabFromUrl : 'sent'
+  const tabFromUrl = searchParams.get('tab') as 'sent' | 'received' | 'gifted' | null;
+  const [activeTab, setActiveTab] = useState<'sent' | 'received' | 'gifted'>(
+    tabFromUrl === 'sent' || tabFromUrl === 'received' || tabFromUrl === 'gifted' ? tabFromUrl : 'sent'
   );
   const [filters, setFilters] = useState<TipFiltersState>(defaultTipFilters);
   const [page, setPage] = useState(1);
@@ -58,7 +58,7 @@ export const TipHistoryPage: React.FC = () => {
         case 'received':
           result = await tipHistorySource.getReceivedTips(filters, page, PAGE_SIZE);
           break;
-        case 'gifts':
+        case 'gifted':
           result = await tipHistorySource.getGiftedTips(filters, page, PAGE_SIZE);
           break;
       }
@@ -83,7 +83,22 @@ export const TipHistoryPage: React.FC = () => {
     setPage(1);
   }, [activeTab, filters]);
 
-  const stats = useMemo(() => tipHistorySource.getStats(), [tipHistorySource]);
+  const [stats, setStats] = useState<{ totalSent: number; totalReceived: number }>({
+    totalSent: 0,
+    totalReceived: 0,
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const s = await tipHistorySource.getStats();
+        setStats(s);
+      } catch (e) {
+        console.error('Failed to fetch stats:', e);
+      }
+    };
+    fetchStats();
+  }, [tipHistorySource]);
 
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -94,7 +109,7 @@ export const TipHistoryPage: React.FC = () => {
     setIsShareOpen(true);
   };
 
-  const handleTabChange = (tab: 'sent' | 'received' | 'gifts') => {
+  const handleTabChange = (tab: 'sent' | 'received' | 'gifted') => {
     setActiveTab(tab);
     setPage(1);
     setSearchParams((prev) => {
@@ -172,14 +187,14 @@ export const TipHistoryPage: React.FC = () => {
             </button>
             <button
               role="tab"
-              aria-selected={activeTab === 'gifts'}
-              onClick={() => handleTabChange('gifts')}
+              aria-selected={activeTab === 'gifted'}
+              onClick={() => handleTabChange('gifted')}
               className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors flex items-center gap-1.5 ${
-                activeTab === 'gifts'
+                activeTab === 'gifted'
                   ? 'border-purple-500 text-purple-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
-              data-testid="gifts-tab"
+              data-testid="gifted-tab"
             >
               🎁 Gifts
               {totalItems > 0 && (
