@@ -70,7 +70,9 @@ Full access to all platform features and permissions.
 
 ## Permissions
 
-All permissions are defined in `constants/permissions.ts`:
+All permissions are defined in `constants/permissions.ts`. For the complete role-to-permission mapping and detailed audit workflow, see [PERMISSION_MATRIX.md](./PERMISSION_MATRIX.md).
+
+### Quick Permission Reference
 
 - `view_users` - View user list
 - `ban_users` - Ban users
@@ -103,9 +105,9 @@ async getUsers() {
 }
 ```
 
-### Audit Logging
+### Audit Logging and Workflow
 
-All admin actions are automatically logged with:
+All admin actions are automatically logged with comprehensive audit trail:
 
 - Admin user ID
 - Action type
@@ -114,6 +116,26 @@ All admin actions are automatically logged with:
 - Reason for action
 - IP address
 - Timestamp
+
+#### Review Process
+
+**Daily Reviews**:
+- Super Admins review all high-impact actions (bans, content removal)
+- Cross-role validation for support and moderator actions
+- Automated reports for unusual activity patterns
+
+**Weekly Reporting**:
+- Action metrics by role and permission type
+- Most active admins and common action reasons
+- Escalation patterns and peak activity times
+
+**Immediate Escalation Required**:
+- Mass actions (>100 entities in 1 hour)
+- Actions on high-value accounts
+- Unusual IP addresses or locations
+- Actions outside business hours
+
+For detailed audit workflow, escalation guidelines, and compliance requirements, see [PERMISSION_MATRIX.md](./PERMISSION_MATRIX.md#audit-workflow).
 
 ## Database Schema
 

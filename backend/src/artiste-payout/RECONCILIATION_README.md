@@ -161,7 +161,19 @@ POST /admin/reconcile/payouts/:artistId/repair
    - Failed payout → retry flow
    - Repair flow for mismatches
 
-## Usage Examples
+## Operational Guidance
+
+For detailed operational procedures, investigation steps, and repair safety guidelines, see [RECONCILIATION_RUNBOOK.md](./RECONCILIATION_RUNBOOK.md).
+
+### Quick Operations
+
+```typescript
+// Check for issues (detection only)
+const discrepancies = await reconciliationService.reconcileArtist(artistId, false);
+
+// Fix issues automatically (requires safety verification)
+const fixed = await reconciliationService.reconcileArtist(artistId, true);
+```
 
 ### Query Audit Trail
 ```typescript
@@ -181,15 +193,6 @@ const byPayout = audits.reduce((map, audit) => {
   }
   return map;
 }, new Map<string, ArtistBalanceAudit[]>());
-```
-
-### Run Reconciliation
-```typescript
-// Check for issues
-const discrepancies = await reconciliationService.reconcileArtist(artistId, false);
-
-// Fix issues automatically
-const fixed = await reconciliationService.reconcileArtist(artistId, true);
 ```
 
 ## Future Enhancements

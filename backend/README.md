@@ -97,6 +97,15 @@ API routes are versioned under `/api/v1/*` (except health probes and `/api/versi
 
 See `src/search/README.md` for details.
 
+### Notifications
+
+- `GET /api/v1/notifications` - Get user notifications (paginated)
+- `GET /api/v1/notifications/unread-count` - Get unread notification count
+- `PATCH /api/v1/notifications/:id/read` - Mark notification as read
+- `PATCH /api/v1/notifications/read-all` - Mark all notifications as read
+
+See `docs/notification-websocket-guide.md` for complete WebSocket notification delivery guide.
+
 ### Tracks
 
 - `POST /api/v1/tracks` - Create track with file upload

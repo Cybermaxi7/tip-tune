@@ -65,7 +65,7 @@ Aggregates supporter contribution data for efficient querying.
 
 #### GoalProgressScheduler
 - Creates daily snapshots for active goals
-- Cleans up old snapshots (placeholder implementation)
+- Cleans up old snapshots based on retention policy
 
 ## API Endpoints
 
@@ -172,4 +172,3 @@ The feature includes comprehensive tests covering:
 Run tests with:
 ```bash
 npm test -- goals/goal-progress.service.spec.ts
-```
