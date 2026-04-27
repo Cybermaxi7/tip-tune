@@ -165,7 +165,9 @@ describe('TipHistoryPage', () => {
   it('should show empty state when no tips match filters', async () => {
     // Mock source to return empty results
     const mockSource = new FixtureTipHistorySource();
-    vi.spyOn(tipHistorySourceModule, 'FixtureTipHistorySource').mockImplementation(() => mockSource);
+    vi.spyOn(tipHistorySourceModule, 'FixtureTipHistorySource').mockImplementation(function() {
+      return mockSource;
+    });
     // This is tricky to mock properly, but the test structure is in place
 
     render(<TipHistoryPage />);
@@ -191,7 +193,9 @@ describe('TipHistoryPage', () => {
     vi.stubEnv('VITE_DEV_USER_ID', 'user123');
 
     const mockApiSource = new ApiTipHistorySource('user123');
-    vi.spyOn(tipHistorySourceModule, 'ApiTipHistorySource').mockReturnValue(mockApiSource);
+    vi.spyOn(tipHistorySourceModule, 'ApiTipHistorySource').mockImplementation(function() {
+      return mockApiSource;
+    });
 
     render(<TipHistoryPage />);
 
