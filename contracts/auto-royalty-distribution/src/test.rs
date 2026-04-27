@@ -1,8 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String, Vec};
-use crate::storage::{MAX_LOGS_PER_TRACK, DAY_IN_LEDGERS, PERSISTENT_BUMP_AMOUNT};
+extern crate std;
+use std::format;
+use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Env, String, Vec};
+use crate::storage::MAX_LOGS_PER_TRACK;
 
 #[test]
 fn test_set_splits() {
@@ -380,7 +382,7 @@ fn test_ttl_bumping() {
     client.set_splits(&owner, &track_id, &collabs);
 
     // Jump ahead in time, but stay within TTL
-    env.ledger().set(Ledger {
+    env.ledger().set(LedgerInfo {
         number: 100,
         timestamp: 1000,
         network_id: [0; 32],
