@@ -136,30 +136,9 @@ npm run test:cov
 
 ## Environment Variables
 
-```env
-# Application
-NODE_ENV=development
-PORT=3001
-FRONTEND_URL=http://localhost:3000
+TipTune uses environment variables for configuration. 
 
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=password
-DB_NAME=tiptune
-
-# Storage
-STORAGE_TYPE=local
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=52428800
-
-# AWS S3 (optional, for cloud storage)
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_REGION=
-AWS_S3_BUCKET=
-```
+For a complete list of variables, descriptions, and defaults, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
 
 ## Project Structure
 

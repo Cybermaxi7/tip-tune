@@ -80,10 +80,9 @@ Rate limiting has been applied to the following controllers:
 - **HealthController** (`src/health/health.controller.ts`)
   - All endpoints - No rate limiting (skipped)
 
-### 4. Configuration
-
 #### Environment Variables
-Added to `.env.example`:
+Added to `.env.example`. For a complete reference, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
+
 ```env
 # Redis Configuration
 REDIS_HOST=localhost

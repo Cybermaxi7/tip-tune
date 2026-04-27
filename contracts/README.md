@@ -186,7 +186,7 @@ cargo test
 
 ## Integration with Backend
 
-Add the deployed contract ID to your backend `.env`:
+Add the deployed contract ID to your backend `.env`. For a complete list of environment variables, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
 
 ```env
 STELLAR_TIP_ESCROW_CONTRACT=C...

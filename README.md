@@ -99,10 +99,8 @@ npm install
 # Copy environment variables
 cp .env.example .env
 
-# Configure your .env file with:
-# - Stellar network settings (testnet/mainnet)
-# - Database credentials
-# - API keys
+# Configure your .env file. 
+# See docs/environment-reference.md for a full list of variables.
 
 # Run database migrations
 npm run migrate
