@@ -15,7 +15,17 @@ A professional NestJS backend service for audio file upload, storage, and stream
 - **Comprehensive Testing**: Integration tests for all endpoints
 
 ## Tech Stack
-
+/**
+ * Compression Measurement Script
+ * 
+ * This script measures the effectiveness of HTTP response compression
+ * on key API endpoints by comparing response sizes with different
+ * compression algorithms (brotli, gzip, none).
+ * 
+ * Usage: node scripts/measure-compression.js
+ * 
+ * Requirements: Server must be running on the configured port
+ */
 - **Framework**: NestJS
 - **Database**: PostgreSQL with TypeORM
 - **File Upload**: Multer
