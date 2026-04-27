@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { OnboardingData } from "../types/onboarding";
 import { analytics } from "@/types/analytics";
-
-const STORAGE_KEY = "tiptune_onboarding_draft";
+import { onboardingService } from "@/services/onboardingService";
 
 const initialData: OnboardingData = {
   currentStep: 0,
@@ -38,32 +37,10 @@ const initialData: OnboardingData = {
   lastUpdated: new Date().toISOString(),
 };
 
-function serializeForStorage(data: OnboardingData): string {
-  const serializable = {
-    ...data,
-    profile: {
-      ...data.profile,
-      profilePicture: null, // File objects can't be serialized
-    },
-    track: {
-      ...data.track,
-      file: null,
-      coverArt: null,
-    },
-  };
-  return JSON.stringify(serializable);
-}
-
 export function useOnboardingPersistence() {
   const [data, setDataInternal] = useState<OnboardingData>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return { ...initialData, ...parsed };
-      }
-    } catch {}
-    return initialData;
+    const saved = onboardingService.loadDraft();
+    return saved ? { ...initialData, ...saved } : initialData;
   });
 
   const stepStartTime = useRef<number>(Date.now());
@@ -85,26 +62,21 @@ export function useOnboardingPersistence() {
     [],
   );
 
-  // Auto-save to localStorage
+  // Auto-save to localStorage via service
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, serializeForStorage(data));
-    } catch {}
+    onboardingService.saveDraft(data);
   }, [data]);
 
   const saveDraft = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, serializeForStorage(data));
-      analytics.onboardingDraftSaved(String(data.currentStep));
-    } catch {}
+    onboardingService.saveDraft(data);
   }, [data]);
 
   const clearDraft = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    onboardingService.clearDraft();
   }, []);
 
   const hasDraft = useCallback(() => {
-    return !!localStorage.getItem(STORAGE_KEY);
+    return onboardingService.hasDraft();
   }, []);
 
   const goToStep = useCallback(

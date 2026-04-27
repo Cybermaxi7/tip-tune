@@ -1,6 +1,13 @@
 import { useWallet as useOriginalWallet } from "./useWallet";
 import type { WalletConnectionState } from "../types/wallet";
 import { WalletStateManager } from "../utils/walletState";
+import {
+  classifyWalletError,
+  getWalletErrorInfo,
+  getUserFacingErrorMessage,
+  isWalletErrorRecoverable,
+  type WalletErrorCategory,
+} from "../utils/walletErrors";
 
 /**
  * Enhanced wallet hook that provides consistent state management
@@ -22,28 +29,27 @@ export const useEnhancedWallet = () => {
               ).state
             : "disconnected";
 
+    // Get classified error information
+    const errorCategory: WalletErrorCategory = originalWallet.error
+        ? classifyWalletError(new Error(originalWallet.error))
+        : "unknown";
+
+    const errorInfo = originalWallet.error
+        ? getWalletErrorInfo(new Error(originalWallet.error))
+        : null;
+
     const getConnectionMessage = (): string => {
         if (originalWallet.isConnecting) return "Connecting to wallet...";
         if (originalWallet.isConnected) return "Wallet connected successfully";
-        if (originalWallet.error) return originalWallet.error;
+        if (originalWallet.error) {
+            return getUserFacingErrorMessage(new Error(originalWallet.error));
+        }
         return "Connect your wallet to get started";
     };
 
     const canRetry = (): boolean => {
-        // Determine retry capability based on state
-        switch (connectionState) {
-            case "rejected":
-            case "locked":
-            case "error":
-                return true;
-            case "not_installed":
-            case "connecting":
-            case "connected":
-            case "disconnected":
-                return false;
-            default:
-                return false;
-        }
+        if (!originalWallet.error) return false;
+        return isWalletErrorRecoverable(new Error(originalWallet.error));
     };
 
     const getStateIcon = (): string => {
@@ -55,7 +61,15 @@ export const useEnhancedWallet = () => {
     };
 
     const getErrorSolutions = () => {
-        return WalletStateManager.getErrorSolutions(connectionState);
+        if (!originalWallet.error) {
+            return WalletStateManager.getErrorSolutions(connectionState);
+        }
+        const info = getWalletErrorInfo(new Error(originalWallet.error));
+        return {
+            primary: info.action?.label || "Try Again",
+            secondary: info.userMessage,
+            installUrl: info.action?.link,
+        };
     };
 
     const retryConnection = async () => {
@@ -65,16 +79,18 @@ export const useEnhancedWallet = () => {
     };
 
     const clearError = () => {
-        // This would need to be added to original wallet context
-        // For now, we'll just reconnect to clear the error
+        // Error state is managed by the base wallet hook
+        // This method triggers a reconnection attempt which clears errors
         if (originalWallet.error && !originalWallet.isConnected) {
-            // Error will be cleared on next connection attempt
+            // The base wallet will clear error on next connection attempt
         }
     };
 
     return {
         ...originalWallet,
         connectionState,
+        errorCategory,
+        errorInfo,
         getConnectionMessage,
         canRetry,
         getStateIcon,

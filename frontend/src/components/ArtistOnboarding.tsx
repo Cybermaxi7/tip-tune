@@ -8,6 +8,7 @@ import { OnboardingComplete } from "./Onboardingcomplete";
 import { ProgressIndicator } from "./Progressindicator";
 import { OnboardingStep } from "./OnboardingStep";
 import { Step } from "@/types/onboarding";
+import { onboardingService } from "@/services/onboardingService";
 import "./../onboarding.css";
 
 const STEPS: Step[] = [
@@ -62,6 +63,9 @@ export const ArtistOnboarding: React.FC = () => {
     useValidation();
   const [saveNotice, setSaveNotice] = useState(false);
   const [walletConnecting, setWalletConnecting] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const currentStep = data.currentStep;
   const step = STEPS[currentStep];
@@ -111,20 +115,31 @@ export const ArtistOnboarding: React.FC = () => {
     goToStep(Math.min(currentStep + 1, STEPS.length - 1));
   }, [step.id, currentStep, goToStep]);
 
-  const handleWalletConnect = useCallback(async () => {
-    setWalletConnecting(true);
-    // Simulate Stellar wallet connection (replace with real Freighter/Albedo SDK)
-    await new Promise((res) => setTimeout(res, 1500));
-    const mockPublicKey =
-      "GBDV...MOCK" + Math.random().toString(36).slice(-4).toUpperCase();
-    setData((prev) => ({
-      ...prev,
-      wallet: { connected: true, publicKey: mockPublicKey, network: "testnet" },
-      checklist: { ...prev.checklist, wallet_connected: true },
-    }));
-    analytics.walletConnected("testnet");
-    setWalletConnecting(false);
-  }, [setData]);
+  const handleWalletConnect = useCallback(
+    async (walletType: "freighter" | "albedo" = "freighter") => {
+      setWalletConnecting(true);
+      setWalletError(null);
+
+      const result = await onboardingService.verifyWalletConnection(walletType);
+
+      if (result.success) {
+        setData((prev) => ({
+          ...prev,
+          wallet: {
+            connected: true,
+            publicKey: result.publicKey,
+            network: result.network,
+          },
+          checklist: { ...prev.checklist, wallet_connected: true },
+        }));
+      } else {
+        setWalletError(result.error);
+      }
+
+      setWalletConnecting(false);
+    },
+    [setData]
+  );
 
   const handleChecklistToggle = useCallback(
     (key: string) => {
@@ -198,6 +213,7 @@ export const ArtistOnboarding: React.FC = () => {
             onConnect={handleWalletConnect}
             connecting={walletConnecting}
             errors={errors}
+            walletError={walletError}
           />
         );
       case "upload":
@@ -364,9 +380,10 @@ const WelcomeStep: React.FC = () => (
 
 interface WalletStepProps {
   data: ReturnType<typeof useOnboardingPersistence>["data"];
-  onConnect: () => void;
+  onConnect: (walletType: "freighter" | "albedo") => void;
   connecting: boolean;
   errors: Record<string, string>;
+  walletError: string | null;
 }
 
 const WalletStep: React.FC<WalletStepProps> = ({
@@ -374,6 +391,7 @@ const WalletStep: React.FC<WalletStepProps> = ({
   onConnect,
   connecting,
   errors,
+  walletError,
 }) => (
   <OnboardingStep
     title="Connect Your Stellar Wallet"
@@ -410,7 +428,7 @@ const WalletStep: React.FC<WalletStepProps> = ({
             </div>
             <button
               className="btn-primary"
-              onClick={onConnect}
+              onClick={() => onConnect("freighter")}
               disabled={connecting}
             >
               {connecting ? <span className="spinner" /> : null}
@@ -425,7 +443,7 @@ const WalletStep: React.FC<WalletStepProps> = ({
             </div>
             <button
               className="btn-secondary"
-              onClick={onConnect}
+              onClick={() => onConnect("albedo")}
               disabled={connecting}
             >
               Connect Albedo
@@ -433,8 +451,8 @@ const WalletStep: React.FC<WalletStepProps> = ({
           </div>
         </div>
 
-        {errors.wallet && (
-          <div className="form-error wallet-error">{errors.wallet}</div>
+        {(errors.wallet || walletError) && (
+          <div className="form-error wallet-error">{walletError || errors.wallet}</div>
         )}
 
         <div className="wallet-explainer">
