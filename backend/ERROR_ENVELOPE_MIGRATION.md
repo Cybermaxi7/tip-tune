@@ -4,6 +4,9 @@
 
 This guide explains the new consistent error handling system implemented across the Tip-Tune backend. All API endpoints now return errors in a standardized format using a global exception filter.
 
+This repository also maintains a living module rollout status matrix in `ERROR_ENVELOPE_STATUS.md`.
+Use that file to see which controllers/services are migrated, partially migrated, or still using legacy Nest exception classes.
+
 ## Error Response Format
 
 All errors now follow this consistent envelope:
@@ -70,6 +73,9 @@ throw new ApiException('Error message', HttpStatus.BAD_REQUEST);
 ```
 
 ### Specific Exceptions
+
+All preferred custom exception classes are defined in `backend/src/common/exceptions/api-exception.ts`.
+Use these classes instead of Nest built-in exceptions for consistent error envelope output.
 
 #### ResourceNotFoundException (404)
 ```typescript
@@ -200,6 +206,11 @@ All error responses include these headers:
 - `X-Error-ID`: Unique error identifier for tracking
 - `X-Timestamp`: When the error occurred
 - `Content-Type`: application/json
+
+## Migration status and checklist
+
+For module-level rollout status, see `ERROR_ENVELOPE_STATUS.md`.
+That file is the living source of truth for whether a module still throws Nest standard exceptions or has adopted the shared custom exception classes.
 
 ## Testing
 
