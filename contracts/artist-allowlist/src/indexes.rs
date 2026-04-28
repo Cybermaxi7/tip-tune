@@ -6,6 +6,15 @@ pub enum IndexKey {
     ArtistEntries(Address),
 }
 
+const LIFETIME_THRESHOLD: u32 = 100_000;
+const EXTEND_TO: u32 = 200_000;
+
+fn bump(env: &Env, key: &IndexKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, LIFETIME_THRESHOLD, EXTEND_TO);
+}
+
 pub fn add_to_index(env: &Env, artist: &Address, address: &Address) {
     let key = IndexKey::ArtistEntries(artist.clone());
     let mut entries: Vec<Address> = env
@@ -15,6 +24,7 @@ pub fn add_to_index(env: &Env, artist: &Address, address: &Address) {
         .unwrap_or_else(|| Vec::new(env));
     entries.push_back(address.clone());
     env.storage().persistent().set(&key, &entries);
+    bump(env, &key);
 }
 
 pub fn remove_from_index(env: &Env, artist: &Address, address: &Address) {
@@ -35,6 +45,7 @@ pub fn remove_from_index(env: &Env, artist: &Address, address: &Address) {
             }
         }
         env.storage().persistent().set(&key, &entries);
+        bump(env, &key);
     }
 }
 
@@ -48,6 +59,9 @@ pub fn get_page(env: &Env, artist: &Address, page: u32, page_size: u32) -> Vec<A
         .persistent()
         .get(&key)
         .unwrap_or_else(|| Vec::new(env));
+    if !entries.is_empty() {
+        bump(env, &key);
+    }
     let start = page * page_size;
     let total = entries.len();
     let end = (start + page_size).min(total);
@@ -60,9 +74,12 @@ pub fn get_page(env: &Env, artist: &Address, page: u32, page_size: u32) -> Vec<A
 
 pub fn get_count(env: &Env, artist: &Address) -> u32 {
     let key = IndexKey::ArtistEntries(artist.clone());
-    env.storage()
+    let entries = env.storage()
         .persistent()
         .get::<IndexKey, Vec<Address>>(&key)
-        .map(|v| v.len())
-        .unwrap_or(0)
+        .unwrap_or_else(|| Vec::new(env));
+    if !entries.is_empty() {
+        bump(env, &key);
+    }
+    entries.len()
 }

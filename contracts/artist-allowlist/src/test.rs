@@ -19,7 +19,7 @@ fn test_set_mode_open() {
     let client = ArtistAllowlistContractClient::new(&env, &contract_id);
 
     let artist = Address::generate(&env);
-    client.set_allowlist_mode(&artist, &AllowlistMode::Open);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::Open);
 
     let config = client.get_config(&artist);
     assert_eq!(config.artist, artist);
@@ -35,7 +35,7 @@ fn test_set_mode_allowlist_only() {
     let client = ArtistAllowlistContractClient::new(&env, &contract_id);
 
     let artist = Address::generate(&env);
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
 
     let config = client.get_config(&artist);
     assert_eq!(config.mode, AllowlistMode::AllowlistOnly);
@@ -49,16 +49,16 @@ fn test_mode_switching() {
 
     let artist = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::Open);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::Open);
     assert_eq!(client.get_config(&artist).mode, AllowlistMode::Open);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
     assert_eq!(
         client.get_config(&artist).mode,
         AllowlistMode::AllowlistOnly
     );
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
     assert_eq!(client.get_config(&artist).mode, AllowlistMode::TokenGated);
 }
 
@@ -69,11 +69,11 @@ fn test_mode_switch_preserves_config() {
     let client = ArtistAllowlistContractClient::new(&env, &contract_id);
 
     let artist = Address::generate(&env);
-    client.set_allowlist_mode(&artist, &AllowlistMode::Open);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::Open);
 
     let original = client.get_config(&artist);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
     let updated = client.get_config(&artist);
 
     assert_eq!(updated.artist, original.artist);
@@ -91,7 +91,7 @@ fn test_add_to_allowlist() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.add_to_allowlist(&artist, &tipper);
+    client.add_to_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), true);
 }
 
@@ -104,8 +104,8 @@ fn test_add_duplicate_fails() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.add_to_allowlist(&artist, &tipper);
-    let result = client.try_add_to_allowlist(&artist, &tipper);
+    client.add_to_allowlist(&artist, &artist, &tipper);
+    let result = client.try_add_to_allowlist(&artist, &artist, &tipper);
     assert_eq!(result, Err(Ok(Error::AlreadyOnAllowlist)));
 }
 
@@ -118,10 +118,10 @@ fn test_remove_from_allowlist() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.add_to_allowlist(&artist, &tipper);
+    client.add_to_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), true);
 
-    client.remove_from_allowlist(&artist, &tipper);
+    client.remove_from_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), false);
 }
 
@@ -134,7 +134,7 @@ fn test_remove_nonexistent_fails() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    let result = client.try_remove_from_allowlist(&artist, &tipper);
+    let result = client.try_remove_from_allowlist(&artist, &artist, &tipper);
     assert_eq!(result, Err(Ok(Error::NotOnAllowlist)));
 }
 
@@ -147,7 +147,7 @@ fn test_check_can_tip_open_mode() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::Open);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::Open);
     assert_eq!(client.check_can_tip(&artist, &tipper), true);
 }
 
@@ -172,8 +172,8 @@ fn test_check_can_tip_allowlist_only_allowed() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
-    client.add_to_allowlist(&artist, &tipper);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
+    client.add_to_allowlist(&artist, &artist, &tipper);
 
     assert_eq!(client.check_can_tip(&artist, &tipper), true);
 }
@@ -187,7 +187,7 @@ fn test_check_can_tip_allowlist_only_denied() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
     assert_eq!(client.check_can_tip(&artist, &tipper), false);
 }
 
@@ -206,8 +206,8 @@ fn test_check_can_tip_token_gated_sufficient_balance() {
     let sac = token::StellarAssetClient::new(&env, &token_address);
     sac.mint(&tipper, &1000);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
-    client.set_token_gate(&artist, &token_address, &500);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
+    client.set_token_gate(&artist, &artist, &token_address, &500);
 
     assert_eq!(client.check_can_tip(&artist, &tipper), true);
 }
@@ -227,8 +227,8 @@ fn test_check_can_tip_token_gated_insufficient_balance() {
     let sac = token::StellarAssetClient::new(&env, &token_address);
     sac.mint(&tipper, &100);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
-    client.set_token_gate(&artist, &token_address, &500);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
+    client.set_token_gate(&artist, &artist, &token_address, &500);
 
     assert_eq!(client.check_can_tip(&artist, &tipper), false);
 }
@@ -248,8 +248,8 @@ fn test_check_can_tip_token_gated_exact_balance() {
     let sac = token::StellarAssetClient::new(&env, &token_address);
     sac.mint(&tipper, &500);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
-    client.set_token_gate(&artist, &token_address, &500);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
+    client.set_token_gate(&artist, &artist, &token_address, &500);
 
     assert_eq!(client.check_can_tip(&artist, &tipper), true);
 }
@@ -263,7 +263,7 @@ fn test_check_can_tip_token_gated_no_gate_config() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
     assert_eq!(client.check_can_tip(&artist, &tipper), false);
 }
 
@@ -276,10 +276,10 @@ fn test_set_token_gate_invalid_balance() {
     let artist = Address::generate(&env);
     let token_address = Address::generate(&env);
 
-    let result = client.try_set_token_gate(&artist, &token_address, &0);
+    let result = client.try_set_token_gate(&artist, &artist, &token_address, &0);
     assert_eq!(result, Err(Ok(Error::InvalidTokenConfig)));
 
-    let result = client.try_set_token_gate(&artist, &token_address, &-10);
+    let result = client.try_set_token_gate(&artist, &artist, &token_address, &-10);
     assert_eq!(result, Err(Ok(Error::InvalidTokenConfig)));
 }
 
@@ -303,13 +303,13 @@ fn test_allowlist_add_remove_readd() {
     let artist = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.add_to_allowlist(&artist, &tipper);
+    client.add_to_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), true);
 
-    client.remove_from_allowlist(&artist, &tipper);
+    client.remove_from_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), false);
 
-    client.add_to_allowlist(&artist, &tipper);
+    client.add_to_allowlist(&artist, &artist, &tipper);
     assert_eq!(client.is_on_allowlist(&artist, &tipper), true);
 }
 
@@ -323,10 +323,10 @@ fn test_multiple_artists_independent() {
     let artist2 = Address::generate(&env);
     let tipper = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist1, &AllowlistMode::AllowlistOnly);
-    client.set_allowlist_mode(&artist2, &AllowlistMode::Open);
+    client.set_allowlist_mode(&artist1, &artist1, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist2, &artist2, &AllowlistMode::Open);
 
-    client.add_to_allowlist(&artist1, &tipper);
+    client.add_to_allowlist(&artist1, &artist1, &tipper);
 
     assert_eq!(client.check_can_tip(&artist1, &tipper), true);
     assert_eq!(client.check_can_tip(&artist2, &tipper), true);
@@ -348,7 +348,7 @@ fn test_batch_add_to_allowlist() {
 
     let addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone(), tipper3.clone()];
 
-    client.add_batch_to_allowlist(&artist, &addresses);
+    client.add_batch_to_allowlist(&artist, &artist, &addresses);
 
     assert_eq!(client.is_on_allowlist(&artist, &tipper1), true);
     assert_eq!(client.is_on_allowlist(&artist, &tipper2), true);
@@ -364,7 +364,7 @@ fn test_batch_add_empty_fails() {
     let artist = Address::generate(&env);
     let addresses: Vec<Address> = soroban_sdk::vec![&env];
 
-    let result = client.try_add_batch_to_allowlist(&artist, &addresses);
+    let result = client.try_add_batch_to_allowlist(&artist, &artist, &addresses);
     assert_eq!(result, Err(Ok(Error::EmptyBatchOperation)));
 }
 
@@ -379,7 +379,7 @@ fn test_batch_add_with_duplicate_in_batch_fails() {
 
     let addresses = soroban_sdk::vec![&env, tipper.clone(), tipper.clone()];
 
-    let result = client.try_add_batch_to_allowlist(&artist, &addresses);
+    let result = client.try_add_batch_to_allowlist(&artist, &artist, &addresses);
     assert_eq!(result, Err(Ok(Error::AlreadyOnAllowlist)));
 }
 
@@ -395,12 +395,12 @@ fn test_batch_add_with_existing_member_fails() {
     let tipper3 = Address::generate(&env);
 
     // Add first member
-    client.add_to_allowlist(&artist, &tipper1);
+    client.add_to_allowlist(&artist, &artist, &tipper1);
 
     // Try to batch add including already-existing member (atomicity check)
     let addresses = soroban_sdk::vec![&env, tipper2.clone(), tipper1.clone(), tipper3.clone()];
 
-    let result = client.try_add_batch_to_allowlist(&artist, &addresses);
+    let result = client.try_add_batch_to_allowlist(&artist, &artist, &addresses);
     assert_eq!(result, Err(Ok(Error::AlreadyOnAllowlist)));
 
     // Verify atomicity: tipper2 and tipper3 should NOT have been added
@@ -421,11 +421,11 @@ fn test_batch_remove_from_allowlist() {
 
     // Add all
     let addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone(), tipper3.clone()];
-    client.add_batch_to_allowlist(&artist, &addresses);
+    client.add_batch_to_allowlist(&artist, &artist, &addresses);
 
     // Remove some
     let remove_addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper3.clone()];
-    client.remove_batch_from_allowlist(&artist, &remove_addresses);
+    client.remove_batch_from_allowlist(&artist, &artist, &remove_addresses);
 
     assert_eq!(client.is_on_allowlist(&artist, &tipper1), false);
     assert_eq!(client.is_on_allowlist(&artist, &tipper2), true);
@@ -441,7 +441,7 @@ fn test_batch_remove_empty_fails() {
     let artist = Address::generate(&env);
     let addresses: Vec<Address> = soroban_sdk::vec![&env];
 
-    let result = client.try_remove_batch_from_allowlist(&artist, &addresses);
+    let result = client.try_remove_batch_from_allowlist(&artist, &artist, &addresses);
     assert_eq!(result, Err(Ok(Error::EmptyBatchOperation)));
 }
 
@@ -457,7 +457,7 @@ fn test_batch_remove_nonexistent_fails() {
 
     let addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone()];
 
-    let result = client.try_remove_batch_from_allowlist(&artist, &addresses);
+    let result = client.try_remove_batch_from_allowlist(&artist, &artist, &addresses);
     assert_eq!(result, Err(Ok(Error::NotOnAllowlist)));
 }
 
@@ -474,12 +474,12 @@ fn test_batch_remove_partial_atomicity() {
 
     // Add tipper1 and tipper2
     let add_addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone()];
-    client.add_batch_to_allowlist(&artist, &add_addresses);
+    client.add_batch_to_allowlist(&artist, &artist, &add_addresses);
 
     // Try to batch remove including non-existent member (atomicity check)
     let remove_addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper3.clone()];
 
-    let result = client.try_remove_batch_from_allowlist(&artist, &remove_addresses);
+    let result = client.try_remove_batch_from_allowlist(&artist, &artist, &remove_addresses);
     assert_eq!(result, Err(Ok(Error::NotOnAllowlist)));
 
     // Verify atomicity: tipper1 should still be there
@@ -499,9 +499,9 @@ fn test_list_allowlist_basic() {
     let tipper2 = Address::generate(&env);
     let tipper3 = Address::generate(&env);
 
-    client.add_to_allowlist(&artist, &tipper1);
-    client.add_to_allowlist(&artist, &tipper2);
-    client.add_to_allowlist(&artist, &tipper3);
+    client.add_to_allowlist(&artist, &artist, &tipper1);
+    client.add_to_allowlist(&artist, &artist, &tipper2);
+    client.add_to_allowlist(&artist, &artist, &tipper3);
 
     let page = client.list_allowlist(&artist, &0, &10);
     assert_eq!(page.len(), 3);
@@ -518,11 +518,11 @@ fn test_get_allowlist_count() {
 
     let tipper1 = Address::generate(&env);
     let tipper2 = Address::generate(&env);
-    client.add_to_allowlist(&artist, &tipper1);
-    client.add_to_allowlist(&artist, &tipper2);
+    client.add_to_allowlist(&artist, &artist, &tipper1);
+    client.add_to_allowlist(&artist, &artist, &tipper2);
     assert_eq!(client.get_allowlist_count(&artist), 2);
 
-    client.remove_from_allowlist(&artist, &tipper1);
+    client.remove_from_allowlist(&artist, &artist, &tipper1);
     assert_eq!(client.get_allowlist_count(&artist), 1);
 }
 
@@ -541,7 +541,7 @@ fn test_list_allowlist_pagination() {
         Address::generate(&env),
         Address::generate(&env),
     ];
-    client.add_batch_to_allowlist(&artist, &tippers);
+    client.add_batch_to_allowlist(&artist, &artist, &tippers);
 
     let page0 = client.list_allowlist(&artist, &0, &2);
     assert_eq!(page0.len(), 2);
@@ -568,10 +568,10 @@ fn test_list_allowlist_count_reflects_removes() {
     let tipper3 = Address::generate(&env);
 
     let addresses = soroban_sdk::vec![&env, tipper1.clone(), tipper2.clone(), tipper3.clone()];
-    client.add_batch_to_allowlist(&artist, &addresses);
+    client.add_batch_to_allowlist(&artist, &artist, &addresses);
     assert_eq!(client.get_allowlist_count(&artist), 3);
 
-    client.remove_from_allowlist(&artist, &tipper2);
+    client.remove_from_allowlist(&artist, &artist, &tipper2);
     assert_eq!(client.get_allowlist_count(&artist), 2);
 
     let page = client.list_allowlist(&artist, &0, &10);
@@ -603,8 +603,8 @@ fn test_get_token_gate_found() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_address = token_contract.address();
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::TokenGated);
-    client.set_token_gate(&artist, &token_address, &1000);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::TokenGated);
+    client.set_token_gate(&artist, &artist, &token_address, &1000);
 
     let gate = client.get_token_gate(&artist);
     assert_eq!(gate.token_address, token_address);
@@ -637,7 +637,7 @@ fn test_token_gate_validation_with_valid_token() {
     let token_address = token_contract.address();
 
     // Should succeed with valid token
-    let result = client.try_set_token_gate(&artist, &token_address, &1000);
+    let result = client.try_set_token_gate(&artist, &artist, &token_address, &1000);
     assert_eq!(result, Ok(Ok(())));
 }
 
@@ -653,7 +653,7 @@ fn test_batch_add_then_remove_workflow() {
     let tipper3 = Address::generate(&env);
     let tipper4 = Address::generate(&env);
 
-    client.set_allowlist_mode(&artist, &AllowlistMode::AllowlistOnly);
+    client.set_allowlist_mode(&artist, &artist, &AllowlistMode::AllowlistOnly);
 
     // Batch add 4 tippers
     let add_addresses = soroban_sdk::vec![
@@ -663,7 +663,7 @@ fn test_batch_add_then_remove_workflow() {
         tipper3.clone(),
         tipper4.clone()
     ];
-    client.add_batch_to_allowlist(&artist, &add_addresses);
+    client.add_batch_to_allowlist(&artist, &artist, &add_addresses);
 
     // All should be able to tip
     assert_eq!(client.check_can_tip(&artist, &tipper1), true);
@@ -673,11 +673,63 @@ fn test_batch_add_then_remove_workflow() {
 
     // Batch remove 2 tippers
     let remove_addresses = soroban_sdk::vec![&env, tipper2.clone(), tipper4.clone()];
-    client.remove_batch_from_allowlist(&artist, &remove_addresses);
+    client.remove_batch_from_allowlist(&artist, &artist, &remove_addresses);
 
     // Check can tip results
     assert_eq!(client.check_can_tip(&artist, &tipper1), true);
     assert_eq!(client.check_can_tip(&artist, &tipper2), false);
     assert_eq!(client.check_can_tip(&artist, &tipper3), true);
     assert_eq!(client.check_can_tip(&artist, &tipper4), false);
+}
+
+#[test]
+fn test_delegated_manager_can_admin_allowlist() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let manager = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    client.set_manager(&artist, &manager, &true);
+    assert!(client.is_manager(&artist, &manager));
+
+    client.set_allowlist_mode(&artist, &manager, &AllowlistMode::AllowlistOnly);
+    client.add_to_allowlist(&artist, &manager, &tipper);
+
+    assert!(client.is_on_allowlist(&artist, &tipper));
+    assert!(client.check_can_tip(&artist, &tipper));
+}
+
+#[test]
+fn test_revoked_manager_cannot_admin_allowlist() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let manager = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    client.set_manager(&artist, &manager, &true);
+    client.set_manager(&artist, &manager, &false);
+    assert!(!client.is_manager(&artist, &manager));
+
+    let result = client.try_add_to_allowlist(&artist, &manager, &tipper);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_unauthorized_wallet_cannot_admin_allowlist() {
+    let env = setup_env();
+    let contract_id = env.register_contract(None, ArtistAllowlistContract);
+    let client = ArtistAllowlistContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let outsider = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    let result = client.try_add_to_allowlist(&artist, &outsider, &tipper);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }

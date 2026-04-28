@@ -27,6 +27,16 @@ fn create_token_contract<'a>(
     )
 }
 
+fn assert_event_snapshot_contains(env: &Env, expected: &[&str]) {
+    let snapshot = format!("{:?}", env.events().all());
+    for needle in expected {
+        assert!(
+            snapshot.contains(needle),
+            "event snapshot missing `{needle}`: {snapshot}"
+        );
+    }
+}
+
 #[test]
 fn test_tip_lifecycle() {
     let env = Env::default();
@@ -59,6 +69,8 @@ fn test_tip_lifecycle() {
         &1,
     );
 
+    assert_event_snapshot_contains(&env, &["TIP", "CREATE", "LOCKED", "action", "tip_id"]);
+
     // Check balance
     assert_eq!(token.balance(&tipper), 900);
     assert_eq!(token.balance(&contract_id), 100);
@@ -72,6 +84,8 @@ fn test_tip_lifecycle() {
 
     // Claim
     client.claim_tip(&lock_id, &artist, &2);
+
+    assert_event_snapshot_contains(&env, &["TIP", "CLAIM", "CLAIMED", "operator"]);
 
     // Check balance
     assert_eq!(token.balance(&artist), 100);
@@ -125,6 +139,8 @@ fn test_refund_lifecycle() {
 
     // Refund
     client.refund_tip(&lock_id, &tipper, &3);
+
+    assert_event_snapshot_contains(&env, &["TIP", "REFUND", "REFUNDED", "expires_at"]);
 
     // Check balances
     assert_eq!(token.balance(&tipper), 1000);

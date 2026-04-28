@@ -776,3 +776,50 @@ fn test_set_cap_emits_event() {
     let events_after = env.events().all().len();
     assert!(events_after > events_before);
 }
+
+#[test]
+fn test_list_holders_and_pagination() {
+    let (env, client, artist, fan1) = setup();
+    let fan2 = Address::generate(&env);
+    let fan3 = Address::generate(&env);
+
+    client.create_fan_token(&artist, &str(&env, "Coin"), &str(&env, "C"), &0, &0);
+    client.mint_for_tip(&artist, &artist, &fan1, &10);
+    client.mint_for_tip(&artist, &artist, &fan2, &20);
+    client.mint_for_tip(&artist, &artist, &fan3, &30);
+
+    let page0 = client.list_holders(&artist, &0, &2);
+    let page1 = client.list_holders(&artist, &1, &2);
+
+    assert_eq!(page0.len(), 2);
+    assert_eq!(page1.len(), 1);
+}
+
+#[test]
+fn test_top_fans_ranking_and_transfer_maintenance() {
+    let (env, client, artist, fan1) = setup();
+    let fan2 = Address::generate(&env);
+    let fan3 = Address::generate(&env);
+
+    client.create_fan_token(&artist, &str(&env, "Coin"), &str(&env, "C"), &0, &0);
+
+    client.mint_for_tip(&artist, &artist, &fan1, &10); // 100
+    client.mint_for_tip(&artist, &artist, &fan2, &40); // 400
+    client.mint_for_tip(&artist, &artist, &fan3, &20); // 200
+
+    let top = client.get_top_fans(&artist, &2);
+    assert_eq!(top.len(), 2);
+    assert_eq!(top.get(0).unwrap().holder, fan2);
+    assert_eq!(top.get(0).unwrap().balance, 400);
+    assert_eq!(top.get(1).unwrap().holder, fan3);
+    assert_eq!(top.get(1).unwrap().balance, 200);
+
+    client.transfer_fan_tokens(&fan2, &fan1, &artist, &400); // fan2 now zero
+    let holders = client.list_holders(&artist, &0, &10);
+    for holder in holders.iter() {
+        assert_ne!(holder, fan2);
+    }
+
+    let top_after = client.get_top_fans(&artist, &2);
+    assert_eq!(top_after.get(0).unwrap().holder, fan1);
+}
