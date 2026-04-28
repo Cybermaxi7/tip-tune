@@ -1,53 +1,65 @@
-# TipTune Contracts Quickstart
+# TipTune Contracts — Quickstart
 
-Use this quickstart to get a local contracts environment running without hunting through multiple files.
+Get the full Soroban workspace building and testing locally in a few commands.
 
-## Toolchain
+## 1. Toolchain
+
+`rust-toolchain.toml` pins Rust 1.88.0 automatically. If you haven't installed that toolchain yet:
 
 ```bash
 rustup toolchain install 1.88.0
-rustup default 1.88.0
 rustup target add wasm32-unknown-unknown
 rustup component add clippy rustfmt
 ```
 
-Install Soroban CLI when you need deployment or manual invocation:
+Install Soroban CLI only when you need deployment or manual contract invocation:
 
 ```bash
 cargo install --locked soroban-cli
 ```
 
-## First validation run
+## 2. First validation run
 
-From the repository root:
-
-```bash
-cd contracts
-cargo test -p tip-time-lock
-```
-
-From a single contract directory:
-
-```bash
-cd contracts/tip-time-lock
-cargo test --verbose
-cargo build --target wasm32-unknown-unknown --release
-cargo clippy -- -D warnings
-cargo fmt -- --check
-```
-
-## Where to go next
-
-- Use [TESTING.md](TESTING.md) for the full validation matrix, CI-parity commands, and guidance on when to use snapshots.
-- Use [CHECKLIST.md](CHECKLIST.md) before opening a PR.
-- Use [README.md](README.md) for contract overview and deployment notes.
-
-## Common next steps
+From the `contracts/` directory, verify the entire workspace compiles and all tests pass:
 
 ```bash
 cd contracts
-cargo build -p tip-time-lock --target wasm32-unknown-unknown --release
-cargo test -p tip-time-lock -- --nocapture
+cargo test --workspace
 ```
 
-If you changed multiple contracts, run the CI-parity sweep from [TESTING.md](TESTING.md) instead of relying on a single package command.
+Expected output: every package's test suite runs; no failures.
+
+## 3. Build all WASM artifacts
+
+```bash
+cargo build --workspace --target wasm32-unknown-unknown --release
+```
+
+Compiled `.wasm` files land in `target/wasm32-unknown-unknown/release/`.
+
+## 4. Work on a single package
+
+Replace `<package>` with any name from [WORKSPACE_OVERVIEW.md](WORKSPACE_OVERVIEW.md):
+
+```bash
+cargo test -p <package>
+cargo build -p <package> --target wasm32-unknown-unknown --release
+cargo clippy -p <package> -- -D warnings
+cargo fmt -p <package> -- --check
+```
+
+Example for `fan-token`:
+
+```bash
+cargo test -p fan-token
+cargo build -p fan-token --target wasm32-unknown-unknown --release
+```
+
+## 5. Where to go next
+
+| Goal | File |
+| :--- | :--- |
+| Understand every package | [WORKSPACE_OVERVIEW.md](WORKSPACE_OVERVIEW.md) |
+| Full CI-parity test matrix | [TESTING.md](TESTING.md) |
+| Pre-PR checklist | [CHECKLIST.md](CHECKLIST.md) |
+| Deploy a contract | [README.md](README.md#deployment) |

@@ -1,233 +1,87 @@
 # TipTune Smart Contracts
 
-Soroban smart contracts for TipTune's tip escrow and royalty distribution system.
+Soroban smart contracts for the TipTune platform. The workspace contains **19 packages** — `tip-escrow` is one of them.
 
 ## Documentation
 
-- [Docs index](../docs/README.md)
-- [Contracts quickstart](QUICKSTART.md)
-- [Contracts testing and linting guide](TESTING.md)
+- [Workspace overview](WORKSPACE_OVERVIEW.md) — every package, its purpose, build/test commands
+- [Quickstart](QUICKSTART.md) — get the workspace running in minutes
+- [Testing & linting guide](TESTING.md)
 - [Contributor checklist](CHECKLIST.md)
-
-## Overview
-
-The **Tip Escrow Contract** enables:
-- Secure tip payments from fans to artists
-- Automatic royalty distribution to collaborators
-- Configurable revenue splits
-- On-chain tip history
+- [Docs index](../docs/README.md)
 
 ## Prerequisites
 
-- Rust 1.88.0 (matches the contracts CI toolchain)
+- Rust 1.88.0 (`rust-toolchain.toml` pins this automatically)
 - `wasm32-unknown-unknown` target
-- Soroban CLI (for deployment)
+- Soroban CLI (deployment / manual invocation only)
 
 ```bash
-# Install Rust target
 rustup target add wasm32-unknown-unknown
-
-# Install Soroban CLI
-cargo install --locked soroban-cli
+rustup component add clippy rustfmt
+cargo install --locked soroban-cli   # optional, for deployment
 ```
 
-## Project Structure
+## Build
 
-```
-contracts/
-├── tip-escrow/
-│   ├── src/
-│   │   ├── lib.rs        # Main contract logic
-│   │   ├── types.rs      # Data structures
-│   │   ├── storage.rs    # Storage helpers
-│   │   └── test.rs       # Test suite
-│   ├── Cargo.toml        # Dependencies
-│   ├── build.sh          # Build script
-│   ├── deploy.sh         # Deployment script
-│   └── test.sh           # Test runner
-└── README.md
-```
-
-## Quick Start
-
-### Build
+Build every contract in the workspace:
 
 ```bash
-cd contracts/tip-escrow
-./build.sh
+cd contracts
+cargo build --workspace --target wasm32-unknown-unknown --release
 ```
 
-### Test
+Build a single package:
 
 ```bash
-cargo test -p tip-time-lock
+cargo build -p tip-escrow --target wasm32-unknown-unknown --release
 ```
 
-For the full command matrix, CI parity commands, and linting guidance, see [TESTING.md](TESTING.md).
+## Test
 
-### Deploy to Testnet
+Run all tests across the workspace:
 
 ```bash
-# Configure Soroban CLI with your identity
+cd contracts
+cargo test --workspace
+```
+
+Run tests for a single package:
+
+```bash
+cargo test -p tip-escrow
+```
+
+## Workspace packages
+
+See [WORKSPACE_OVERVIEW.md](WORKSPACE_OVERVIEW.md) for the full package list with purposes and per-package commands.
+
+## Deployment
+
+```bash
+# Generate / import a Soroban identity
 soroban keys generate default --network testnet
 
-# Deploy
-./deploy.sh
+# Deploy a single contract (example)
+cd contracts/tip-escrow
+./deploy.sh                    # testnet (default)
+NETWORK=mainnet ./deploy.sh    # mainnet
 ```
 
-The contract ID will be saved to `.contract-id` and displayed in the output.
-
-### Deploy to Mainnet
-
-```bash
-NETWORK=mainnet ./deploy.sh
-```
-
-## Contract Functions
-
-### `send_tip`
-
-Send a tip to an artist with automatic royalty distribution.
-
-```rust
-pub fn send_tip(
-    env: Env,
-    sender: Address,
-    artist: Address,
-    token_address: Address,
-    amount: i128,
-) -> u64
-```
-
-**Parameters:**
-- `sender` - Address sending the tip
-- `artist` - Artist receiving the tip
-- `token_address` - Token contract address (e.g., USDC, XLM)
-- `amount` - Tip amount in stroops
-
-**Returns:** Tip ID
-
-### `set_royalty_splits`
-
-Configure royalty splits for an artist.
-
-```rust
-pub fn set_royalty_splits(
-    env: Env,
-    artist: Address,
-    splits: Vec<RoyaltySplit>
-)
-```
-
-**Parameters:**
-- `artist` - Artist address (requires auth)
-- `splits` - Vector of royalty splits (max 100%)
-
-**Example:**
-```rust
-// 20% to collaborator, 80% to artist
-RoyaltySplit {
-    recipient: collaborator_address,
-    percentage: 2000  // Basis points (2000 = 20%)
-}
-```
-
-### `get_royalty_splits`
-
-Get configured royalty splits for an artist.
-
-```rust
-pub fn get_royalty_splits(
-    env: Env,
-    artist: Address
-) -> Option<Vec<RoyaltySplit>>
-```
-
-### `get_tips`
-
-Retrieve all recorded tips.
-
-```rust
-pub fn get_tips(env: Env) -> Vec<TipRecord>
-```
-
-## Data Types
-
-### `TipRecord`
-
-```rust
-pub struct TipRecord {
-    pub sender: Address,
-    pub artist: Address,
-    pub amount: i128,
-    pub timestamp: u64,
-}
-```
-
-### `RoyaltySplit`
-
-```rust
-pub struct RoyaltySplit {
-    pub recipient: Address,
-    pub percentage: u32,  // Basis points (100 = 1%)
-}
-```
-
-## Testing
-
-The contract includes comprehensive tests:
-
-- ✅ Send tip without splits
-- ✅ Send tip with royalty splits
-- ✅ Get royalty splits
-- ✅ Validate split percentages
-- ✅ Authorization checks
-
-Run tests:
-```bash
-cargo test -p tip-time-lock
-```
-
-For workspace validation and per-package commands, see [TESTING.md](TESTING.md).
-
-## Integration with Backend
-
-Add the deployed contract ID to your backend `.env`. For a complete list of environment variables, see the [Canonical Environment Variable Reference](../docs/environment-reference.md).
+The deployed contract ID is saved to `.contract-id` in the package directory. Add it to your backend `.env`:
 
 ```env
 STELLAR_TIP_ESCROW_CONTRACT=C...
 ```
 
-Use the Stellar SDK to invoke contract functions from your NestJS backend.
+See [../docs/environment-reference.md](../docs/environment-reference.md) for all environment variables.
 
-## CI/CD
-
-GitHub Actions workflow for automated testing:
-
-```yaml
-# See: .github/workflows/contracts.yml
-```
-
-## Security Considerations
+## Security
 
 - All tip transfers require sender authorization
-- Royalty splits are validated (max 100%)
-- Contract uses Soroban SDK security best practices
+- Royalty splits are validated (max 100 %)
 - Audit recommended before mainnet deployment
-
-## Gas Optimization
-
-The contract is optimized for minimal gas usage:
-- Efficient storage patterns
-- Minimal computation
-- Optimized WASM output
 
 ## License
 
 MIT
-
-## Support
-
-For issues or questions:
-- GitHub Issues: [OlufunbiIK/tip-tune](https://github.com/OlufunbiIK/tip-tune/issues)
-- Discord: [TipTune Community](https://discord.gg/tkbwMmJE)
