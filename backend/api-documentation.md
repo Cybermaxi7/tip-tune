@@ -1,21 +1,10 @@
 # TipTune Backend API Documentation
 
-This is the normalized repository path for backend API documentation.
+This normalized backend API documentation path now points to the maintained reference in `API_REFERENCE.md`.
 
-## Primary references
-
-- Interactive Swagger UI: `http://localhost:3001/api/docs`
-- Base path: `/api/v1/*` except health probes and `/api/version`
-- Service overview: [README.md](README.md)
-
-## Coverage
-
-- Authentication and JWT flows
-- User and artist profile endpoints
-- Track upload and streaming routes
-- Search and autocomplete endpoints
-- Tip history and transaction status
-- WebSocket event surface
+- Canonical API reference: [API_REFERENCE.md](API_REFERENCE.md)
+- Swagger UI: `http://localhost:3001/api/docs`
+- Versioned API base: `/api/v1`
 
 ## Navigation
 
@@ -23,6 +12,6 @@ This is the normalized repository path for backend API documentation.
 - Use [TESTING.md](TESTING.md) for backend validation commands.
 - Use [../docs/README.md](../docs/README.md) for the repo-wide documentation map.
 
-## Note on naming
+## Compatibility
 
-The legacy file name [api -documentation.md](api%20-documentation.md) is kept as a compatibility redirect so existing bookmarks do not break.
+The legacy file name [api -documentation.md](api%20-documentation.md) remains available for older bookmarks.
