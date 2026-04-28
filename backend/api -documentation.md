@@ -2,14 +2,12 @@
 
 This legacy file name is kept so older links and bookmarks still resolve.
 
-Use the normalized path instead:
+Use the maintained API reference instead:
 
+- [API_REFERENCE.md](API_REFERENCE.md)
 - [api-documentation.md](api-documentation.md)
 - [Backend README](README.md)
 - [Docs index](../docs/README.md)
-
-- XLM (Native)
-- USDC (Stellar Asset)
 
 ---
 
