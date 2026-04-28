@@ -11,6 +11,8 @@ pub enum DataKey {
     Balance(Address, Address),
     /// Counter for generating unique token IDs
     TokenCount,
+    /// List of holders for an artist token
+    HolderIndex(Address),
 }
 
 const LIFETIME_THRESHOLD: u32 = 100_000;
@@ -59,6 +61,54 @@ pub fn get_balance(env: &Env, artist: &Address, holder: &Address) -> Option<FanB
 pub fn set_balance(env: &Env, artist: &Address, holder: &Address, balance: &FanBalance) {
     let key = DataKey::Balance(artist.clone(), holder.clone());
     env.storage().persistent().set(&key, balance);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LIFETIME_THRESHOLD, EXTEND_TO);
+}
+
+pub fn get_holders(env: &Env, artist: &Address) -> soroban_sdk::Vec<Address> {
+    let key = DataKey::HolderIndex(artist.clone());
+    let holders = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| soroban_sdk::Vec::new(env));
+    if !holders.is_empty() {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, EXTEND_TO);
+    }
+    holders
+}
+
+pub fn sync_holder(env: &Env, artist: &Address, holder: &Address, balance: i128) {
+    let key = DataKey::HolderIndex(artist.clone());
+    let mut holders: soroban_sdk::Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| soroban_sdk::Vec::new(env));
+
+    let mut idx: Option<u32> = None;
+    for i in 0..holders.len() {
+        if holders.get(i).unwrap() == *holder {
+            idx = Some(i);
+            break;
+        }
+    }
+
+    if balance > 0 {
+        if idx.is_none() {
+            holders.push_back(holder.clone());
+        }
+    } else if let Some(i) = idx {
+        let last = holders.pop_back().unwrap();
+        if i < holders.len() {
+            holders.set(i, last);
+        }
+    }
+
+    env.storage().persistent().set(&key, &holders);
     env.storage()
         .persistent()
         .extend_ttl(&key, LIFETIME_THRESHOLD, EXTEND_TO);

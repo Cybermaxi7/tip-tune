@@ -2,6 +2,7 @@
 
 pub mod access;
 pub mod events;
+pub mod queries;
 pub mod storage;
 pub mod types;
 pub mod metadata;
@@ -85,6 +86,7 @@ impl FanTokenContract {
                 last_updated: now,
             };
             storage::set_balance(&env, &artist, &artist, &balance);
+            storage::sync_holder(&env, &artist, &artist, balance.balance);
         }
 
         events::token_created(&env, &token_id, &artist, &name, &symbol);
@@ -159,6 +161,7 @@ impl FanTokenContract {
         fan_balance.last_updated = now;
 
         storage::set_balance(&env, &artist, &fan, &fan_balance);
+        storage::sync_holder(&env, &artist, &fan, fan_balance.balance);
 
         events::tokens_minted(&env, &artist, &fan, tip_amount, tokens_to_mint);
 
@@ -211,6 +214,7 @@ impl FanTokenContract {
             .ok_or(Error::Overflow)?;
         from_balance.last_updated = now;
         storage::set_balance(&env, &artist, &from, &from_balance);
+        storage::sync_holder(&env, &artist, &from, from_balance.balance);
 
         // Credit receiver
         let mut to_balance = storage::get_balance(&env, &artist, &to).unwrap_or(FanBalance {
@@ -227,6 +231,7 @@ impl FanTokenContract {
             .ok_or(Error::Overflow)?;
         to_balance.last_updated = now;
         storage::set_balance(&env, &artist, &to, &to_balance);
+        storage::sync_holder(&env, &artist, &to, to_balance.balance);
 
         events::tokens_transferred(&env, &from, &to, &artist, amount);
 
@@ -275,6 +280,7 @@ impl FanTokenContract {
         bal.balance = bal.balance.checked_sub(amount).ok_or(Error::Overflow)?;
         bal.last_updated = env.ledger().timestamp();
         storage::set_balance(&env, &artist, &holder, &bal);
+        storage::sync_holder(&env, &artist, &holder, bal.balance);
 
         token.circulating_supply = token
             .circulating_supply
@@ -374,5 +380,15 @@ impl FanTokenContract {
     /// Returns true if the metadata has been frozen and cannot be updated.
     pub fn is_metadata_frozen(env: Env, artist: Address) -> bool {
         metadata::is_metadata_frozen(env, artist)
+    }
+
+    /// List token holders for an artist without scanning storage.
+    pub fn list_holders(env: Env, artist: Address, page: u32, page_size: u32) -> soroban_sdk::Vec<Address> {
+        queries::list_holders(&env, &artist, page, page_size)
+    }
+
+    /// Return top fan balances ranked by token balance.
+    pub fn get_top_fans(env: Env, artist: Address, limit: u32) -> soroban_sdk::Vec<FanBalance> {
+        queries::top_fans(&env, &artist, limit)
     }
 }
